@@ -53,7 +53,7 @@ export function RestBar({
           <Text style={styles.btnText}>+15</Text>
         </Pressable>
         <Pressable onPress={onDone} style={[styles.btn, { backgroundColor: C.accent }]} accessibilityLabel="Skip rest">
-          <Text style={[styles.btnText, { color: '#1A0E03' }]}>Skip</Text>
+          <Text style={[styles.btnText, { color: C.onAccent }]}>Skip</Text>
         </Pressable>
       </View>
     </View>

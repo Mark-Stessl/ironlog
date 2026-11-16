@@ -68,7 +68,7 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   outer: {
     flex: 1,
-    backgroundColor: Platform.OS === "web" ? "#07080A" : C.bg,
+    backgroundColor: Platform.OS === "web" ? C.backdrop : C.bg,
     alignItems: "center",
   },
   column: {

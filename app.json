@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "ironlog",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0E0F12",
+    "backgroundColor": "#0A0F12",
     "platforms": [
       "android",
       "ios",
@@ -20,7 +20,7 @@
     "android": {
       "package": "com.markstessl.ironlog",
       "adaptiveIcon": {
-        "backgroundColor": "#0E0F12",
+        "backgroundColor": "#0A0F12",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -33,7 +33,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0E0F12",
+          "backgroundColor": "#0A0F12",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }

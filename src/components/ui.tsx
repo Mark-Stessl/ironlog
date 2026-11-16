@@ -22,7 +22,7 @@ export function Button({
   small?: boolean;
 }) {
   const bg = kind === 'primary' ? C.accent : kind === 'secondary' ? C.cardHi : 'transparent';
-  const fg = kind === 'primary' ? '#1A0E03' : kind === 'danger' ? C.danger : kind === 'ghost' ? C.accent : C.text;
+  const fg = kind === 'primary' ? C.onAccent : kind === 'danger' ? C.danger : kind === 'ghost' ? C.accent : C.text;
   return (
     <Pressable
       onPress={onPress}
