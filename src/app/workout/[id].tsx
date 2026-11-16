@@ -8,6 +8,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Elapsed } from '@/components/elapsed';
+import { ExerciseImage } from '@/components/exercise-image';
 import { RestBar } from '@/components/rest-bar';
 import { Button, Card, Empty, HeaderButton, text } from '@/components/ui';
 import {
@@ -247,12 +248,15 @@ function ExerciseCard({
     <Card style={{ paddingHorizontal: S.md, gap: S.xs }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: S.xs }}>
         <Pressable
-          style={{ flex: 1 }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.md }}
           onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}>
-          <Text style={[text.h2, { color: C.accent }]}>{ex.name}</Text>
-          <Text style={text.faint}>
-            {ex.muscle} · {ex.equipment}
-          </Text>
+          <ExerciseImage name={ex.name} equipment={ex.equipment} size={44} radius={10} />
+          <View style={{ flex: 1 }}>
+            <Text style={[text.h2, { color: C.accent }]}>{ex.name}</Text>
+            <Text style={text.faint}>
+              {ex.muscle} · {ex.equipment}
+            </Text>
+          </View>
         </Pressable>
         <Pressable onPress={onRemove} hitSlop={10} accessibilityLabel={`Remove ${ex.name}`}>
           <Ionicons name="trash-outline" size={20} color={C.textFaint} />

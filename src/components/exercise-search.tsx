@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState, type ReactNode } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { ExerciseImage } from '@/components/exercise-image';
 import { Chip, Empty } from '@/components/ui';
 import type { Exercise } from '@/lib/db';
 import { EQUIPMENT, MUSCLES } from '@/lib/exercise-data';
@@ -80,9 +81,7 @@ export function ExerciseSearch({
           <Pressable
             onPress={() => onPick(item)}
             style={({ pressed }) => [styles.row, pressed && { backgroundColor: C.cardHi }]}>
-            <View style={styles.rowIcon}>
-              <Ionicons name={iconFor(item.equipment)} size={18} color={C.accent} />
-            </View>
+            <ExerciseImage name={item.name} equipment={item.equipment} size={48} radius={10} />
             <View style={{ flex: 1 }}>
               <Text style={styles.rowName}>{item.name}</Text>
               <Text style={styles.rowMeta}>
@@ -98,20 +97,6 @@ export function ExerciseSearch({
       />
     </View>
   );
-}
-
-function iconFor(equipment: string) {
-  switch (equipment) {
-    case 'Machine':
-    case 'Smith Machine':
-      return 'hardware-chip-outline' as const;
-    case 'Cable':
-      return 'git-pull-request-outline' as const;
-    case 'Bodyweight':
-      return 'body-outline' as const;
-    default:
-      return 'barbell-outline' as const;
-  }
 }
 
 const styles = StyleSheet.create({
@@ -140,14 +125,6 @@ const styles = StyleSheet.create({
     borderRadius: R.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.border,
-  },
-  rowIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: C.accentDim,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   rowName: { color: C.text, fontSize: 16, fontWeight: '600' },
   rowMeta: { color: C.textDim, fontSize: 13, marginTop: 2 },

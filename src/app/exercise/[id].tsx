@@ -1,12 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Card, Empty, text } from '@/components/ui';
+import { ExerciseImage } from '@/components/exercise-image';
+import { Button, Card, Empty, text } from '@/components/ui';
 import { computeRecords, getExercise, getExerciseHistory } from '@/lib/db';
+import { formVideoUrl, getMedia, REPDB_URL } from '@/lib/exercise-media';
 import { fmtDate, fmtSet, fmtVolume, fmtWeight } from '@/lib/format';
-import { C, S } from '@/lib/theme';
+import { C, R, S } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 export default function ExerciseScreen() {
@@ -25,15 +27,69 @@ export default function ExerciseScreen() {
 
   const { exercise, sessions } = data;
   const rec = computeRecords(sessions);
+  const media = getMedia(exercise.name);
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <Stack.Screen options={{ title: '' }} />
+
+      {media ? (
+        <View style={styles.hero}>
+          <ExerciseImage name={exercise.name} equipment={exercise.equipment} size={300} radius={R.lg} animate />
+        </View>
+      ) : null}
+
       <Text style={text.h1}>{exercise.name}</Text>
       <Text style={text.dim}>
         {exercise.muscle} · {exercise.equipment}
         {exercise.is_custom ? ' · Custom' : ''}
       </Text>
+
+      <Button
+        label="Watch a form video"
+        icon="logo-youtube"
+        kind="secondary"
+        onPress={() => Linking.openURL(formVideoUrl(exercise.name))}
+        style={{ marginTop: S.md }}
+      />
+
+      {media ? (
+        <>
+          <Text style={[text.body, { color: C.textDim, marginTop: S.md, lineHeight: 22 }]}>{media.description}</Text>
+
+          <Text style={[text.label, { marginTop: S.lg }]}>How to do it</Text>
+          <Card style={{ gap: S.md }}>
+            {media.steps.map((step, i) => (
+              <View key={i} style={styles.step}>
+                <View style={styles.stepNum}>
+                  <Text style={styles.stepNumText}>{i + 1}</Text>
+                </View>
+                <Text style={[text.body, { flex: 1, lineHeight: 22 }]}>{step}</Text>
+              </View>
+            ))}
+          </Card>
+
+          {media.tips.length ? (
+            <>
+              <Text style={[text.label, { marginTop: S.lg }]}>Tips</Text>
+              <Card style={{ gap: S.sm }}>
+                {media.tips.map((tip, i) => (
+                  <View key={i} style={styles.step}>
+                    <Ionicons name="bulb-outline" size={18} color={C.accent} style={{ marginTop: 2 }} />
+                    <Text style={[text.body, { flex: 1, lineHeight: 22 }]}>{tip}</Text>
+                  </View>
+                ))}
+              </Card>
+            </>
+          ) : null}
+
+          <Pressable onPress={() => Linking.openURL(REPDB_URL)} accessibilityRole="link">
+            <Text style={[text.faint, { marginTop: S.sm }]}>
+              Exercise data by <Text style={{ color: C.accent }}>RepDB (repdb.co)</Text>
+            </Text>
+          </Pressable>
+        </>
+      ) : null}
 
       <Text style={[text.label, { marginTop: S.lg }]}>Personal records</Text>
       <View style={styles.records}>
@@ -88,6 +144,18 @@ function Record({ label, value, sub }: { label: string; value: string; sub?: str
 
 const styles = StyleSheet.create({
   page: { padding: S.lg, gap: S.sm, paddingBottom: S.xxl },
+  hero: { alignItems: 'center', marginBottom: S.md },
+  step: { flexDirection: 'row', gap: S.md, alignItems: 'flex-start' },
+  stepNum: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: C.accentDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  stepNumText: { color: C.accent, fontSize: 13, fontWeight: '800' },
   records: { flexDirection: 'row', gap: S.sm },
   record: { flex: 1, padding: S.md, gap: 2 },
 });

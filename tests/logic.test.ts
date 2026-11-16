@@ -193,3 +193,19 @@ test('database: full workout flow', async (t) => {
   await dbm.setSetting(db, 'rest_seconds', '150');
   assert.equal(await dbm.getSetting(db, 'rest_seconds', '90'), '150');
 });
+
+test('exercise media: every entry belongs to a built-in exercise and is complete', async () => {
+  const { getMedia, formVideoUrl, imageUrl } = await import('../src/lib/exercise-media');
+  const names = new Set(SEED_EXERCISES.map((e) => e[0]));
+  const media = (await import('../src/lib/exercise-media.json')).default as Record<string, any>;
+  for (const [name, m] of Object.entries(media)) {
+    assert.ok(names.has(name), `media for unknown exercise ${name}`);
+    assert.ok(m.frames.length >= 1 && m.frames.length <= 2, name);
+    assert.ok(m.steps.length >= 2, name);
+  }
+  assert.ok(Object.keys(media).length >= 95);
+  assert.equal(getMedia('Leg Press')!.frames.length, 2);
+  assert.equal(getMedia('My Custom Thing'), null);
+  assert.equal(imageUrl('leg-press-start.webp'), 'https://exercise-dataset.com/images/flat/leg-press-start.webp');
+  assert.ok(formVideoUrl('Chest Press (Machine)').endsWith('Chest%20Press%20Machine%20proper%20form%20tutorial'));
+});

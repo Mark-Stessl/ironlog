@@ -5,6 +5,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { ExerciseImage } from '@/components/exercise-image';
 import { Button, Card, Empty, HeaderButton, text } from '@/components/ui';
 import {
   deleteRoutine,
@@ -90,6 +91,7 @@ function RoutineEditor({
 
       {exercises.map((ex) => (
         <Card key={ex.id} style={styles.row}>
+          <ExerciseImage name={ex.name} equipment={ex.equipment} size={40} radius={8} />
           <View style={{ flex: 1 }}>
             <Text style={[text.body, { fontWeight: '700' }]}>{ex.name}</Text>
             <Text style={text.faint}>
