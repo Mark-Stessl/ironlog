@@ -54,9 +54,17 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
 
       <SectionTitle title="Records" />
       <Card style={styles.records}>
-        <Record label="Heaviest" value={rec.bestWeight ? `${fmtWeight(rec.bestWeight.weight)} kg` : '—'} sub={rec.bestWeight ? `× ${rec.bestWeight.reps}` : undefined} />
+        <Record
+          label="Heaviest"
+          value={rec.bestWeight ? `${fmtWeight(rec.bestWeight.weight)} kg` : '—'}
+          sub={rec.bestWeight ? `× ${rec.bestWeight.reps}` : undefined}
+        />
         <View style={styles.recordLine} />
-        <Record label="Est. 1RM" value={rec.best1RM ? `${fmtWeight(rec.best1RM.value)} kg` : '—'} sub={rec.best1RM ? fmtSet(rec.best1RM.weight, rec.best1RM.reps) : undefined} />
+        <Record
+          label="Est. 1RM"
+          value={rec.best1RM ? `${fmtWeight(rec.best1RM.value)} kg` : '—'}
+          sub={rec.best1RM ? fmtSet(rec.best1RM.weight, rec.best1RM.reps) : undefined}
+        />
         <View style={styles.recordLine} />
         <Record label="Best session" value={rec.bestVolume ? fmtVolume(rec.bestVolume.value) : '—'} />
       </Card>
@@ -102,7 +110,9 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
                 </Text>
                 <Text style={text.faint}>{fmtDate(s.date)}</Text>
               </View>
-              <Text style={[text.dim, { flex: 1 }]}>{s.sets.map((set) => fmtSet(set.weight, set.reps)).join('   ')}</Text>
+              <Text style={[text.dim, { flex: 1 }]}>
+                {s.sets.map((set) => fmtSet(set.weight, set.reps)).join('   ')}
+              </Text>
             </ListRow>
           ))}
         </ListCard>

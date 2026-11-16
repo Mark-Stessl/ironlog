@@ -14,6 +14,7 @@ import {
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Glow } from '@/components/glow';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 
 export type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -48,6 +49,7 @@ export function Page({
   maxWidth = 760,
   scroll = true,
   topInset = false,
+  glow,
   contentStyle,
 }: {
   children: ReactNode;
@@ -55,6 +57,8 @@ export function Page({
   scroll?: boolean;
   /** Pad for the status bar (pages without a navigation header). */
   topInset?: boolean;
+  /** Soft light at the top of the page (default: on for pages without a header). */
+  glow?: boolean;
   contentStyle?: StyleProp<ViewStyle>;
 }) {
   const desktop = useIsDesktop();
@@ -71,11 +75,17 @@ export function Page({
       {children}
     </View>
   );
-  if (!scroll) return <View style={{ flex: 1 }}>{inner}</View>;
   return (
-    <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
-      {inner}
-    </ScrollView>
+    <View style={{ flex: 1 }}>
+      {(glow ?? topInset) ? <Glow /> : null}
+      {scroll ? (
+        <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
+          {inner}
+        </ScrollView>
+      ) : (
+        inner
+      )}
+    </View>
   );
 }
 
@@ -157,8 +167,7 @@ export function Button({
   style?: StyleProp<ViewStyle>;
   small?: boolean;
 }) {
-  const fg =
-    kind === 'primary' ? C.onAccent : kind === 'danger' ? C.danger : kind === 'ghost' ? C.textDim : C.text;
+  const fg = kind === 'primary' ? C.onAccent : kind === 'danger' ? C.danger : kind === 'ghost' ? C.textDim : C.text;
   return (
     <Pressable
       onPress={onPress}

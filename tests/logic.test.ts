@@ -148,7 +148,9 @@ test('database: full workout flow', async (t) => {
     { weight: 60, reps: 8 },
     { weight: 62.5, reps: 6 },
   ]);
-  assert.equal(d.exercises[0].bestWeight, 62.5);
+  assert.equal(d.exercises[0].best.weight, 62.5);
+  assert.equal(d.exercises[0].best.repsAtWeight, 6);
+  assert.equal(d.exercises[0].best.sessions, 1);
   await dbm.updateSet(db, d.exercises[0].sets[0].id, { weight: 65, reps: 5, done: true });
   await dbm.finishWorkout(db, w2);
 
@@ -208,4 +210,37 @@ test('exercise media: every entry belongs to a built-in exercise and is complete
   assert.equal(getMedia('My Custom Thing'), null);
   assert.equal(imageUrl('leg-press-start.webp'), 'https://exercise-dataset.com/images/flat/leg-press-start.webp');
   assert.ok(formVideoUrl('Chest Press (Machine)').endsWith('Chest%20Press%20Machine%20proper%20form%20tutorial'));
+});
+
+test('records: weight, rep and 1RM PRs, checked set by set', async () => {
+  const { addToBest, findPR, markPRs, NO_BEST } = await import('../src/lib/records');
+  let base = NO_BEST;
+  for (const s of [{ weight: 60, reps: 8 }, { weight: 60, reps: 10 }, { weight: 50, reps: 12 }]) base = addToBest(base, s);
+  base = { ...base, sessions: 1 };
+  assert.deepEqual({ ...base }, { weight: 60, repsAtWeight: 10, e1rm: 80, sessions: 1 });
+
+  assert.equal(findPR({ weight: 62.5, reps: 5 }, base)?.kind, 'weight');
+  assert.equal(findPR({ weight: 60, reps: 11 }, base)?.kind, 'reps');
+  assert.equal(findPR({ weight: 55, reps: 20 }, base)?.kind, 'e1rm'); // 55 x 20 = 91.7 est. 1RM
+  assert.equal(findPR({ weight: 60, reps: 10 }, base), null, 'matching is not beating');
+  assert.equal(findPR({ weight: 40, reps: 5 }, base), null);
+  assert.equal(findPR({ weight: 100, reps: 1 }, NO_BEST), null, 'first time ever is not a record');
+  assert.equal(findPR({ weight: 70, reps: 0 }, base), null, 'no reps, no record');
+
+  // Bodyweight: only reps count.
+  const bw = { ...addToBest(NO_BEST, { weight: 0, reps: 12 }), sessions: 1 };
+  assert.equal(findPR({ weight: null, reps: 15 }, bw)?.kind, 'reps');
+  assert.equal(findPR({ weight: null, reps: 12 }, bw), null);
+
+  // In one workout each set must beat everything before it, unticked sets never count.
+  const flags = markPRs(
+    [
+      { weight: 65, reps: 5, done: 1 }, // weight PR
+      { weight: 65, reps: 5, done: 1 }, // same again: no PR
+      { weight: 65, reps: 6, done: 1 }, // more reps at the new top weight: PR
+      { weight: 80, reps: 5, done: 0 }, // not done
+    ],
+    base,
+  );
+  assert.deepEqual(flags.map((f) => f?.kind ?? null), ['weight', null, 'reps', null]);
 });

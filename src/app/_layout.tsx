@@ -9,6 +9,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 
+import { CelebrationProvider } from '@/components/celebrate';
 import { Sidebar } from '@/components/sidebar';
 import { migrate } from '@/lib/db';
 import { C, F, useIsDesktop } from '@/lib/theme';
@@ -41,28 +42,30 @@ export default function RootLayout() {
   return (
     <SQLiteProvider databaseName="ironlog.db" onInit={migrate}>
       <ThemeProvider value={navTheme}>
-        <StatusBar style="light" />
-        <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
-          {desktop ? <Sidebar /> : null}
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Stack
-              screenOptions={{
-                headerStyle: { backgroundColor: C.bg },
-                headerTintColor: C.text,
-                headerTitleStyle: { fontFamily: F.semi, fontSize: 15 },
-                headerShadowVisible: false,
-                headerBackButtonDisplayMode: 'minimal',
-                contentStyle: { backgroundColor: C.bg },
-              }}>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="workout/[id]" options={{ title: 'Workout' }} />
-              <Stack.Screen name="routine/[id]" options={{ title: 'Routine' }} />
-              <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
-              <Stack.Screen name="exercise-picker" options={{ title: 'Add exercise', presentation: 'modal' }} />
-              <Stack.Screen name="exercise-new" options={{ title: 'New exercise', presentation: 'modal' }} />
-            </Stack>
+        <CelebrationProvider>
+          <StatusBar style="light" />
+          <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
+            {desktop ? <Sidebar /> : null}
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Stack
+                screenOptions={{
+                  headerStyle: { backgroundColor: C.bg },
+                  headerTintColor: C.text,
+                  headerTitleStyle: { fontFamily: F.semi, fontSize: 15 },
+                  headerShadowVisible: false,
+                  headerBackButtonDisplayMode: 'minimal',
+                  contentStyle: { backgroundColor: C.bg },
+                }}>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="workout/[id]" options={{ title: 'Workout' }} />
+                <Stack.Screen name="routine/[id]" options={{ title: 'Routine' }} />
+                <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
+                <Stack.Screen name="exercise-picker" options={{ title: 'Add exercise', presentation: 'modal' }} />
+                <Stack.Screen name="exercise-new" options={{ title: 'New exercise', presentation: 'modal' }} />
+              </Stack>
+            </View>
           </View>
-        </View>
+        </CelebrationProvider>
       </ThemeProvider>
     </SQLiteProvider>
   );

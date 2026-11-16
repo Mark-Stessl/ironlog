@@ -3,15 +3,44 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Animated, {
+  FadeInDown,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+  ZoomIn,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useCelebrate } from '@/components/celebrate';
+import { Confetti } from '@/components/confetti';
+import { CountUp } from '@/components/count-up';
+import { Bump } from '@/components/bump';
 import { Elapsed } from '@/components/elapsed';
 import { ExerciseImage } from '@/components/exercise-image';
 import { RestBar } from '@/components/rest-bar';
 import { ExerciseSearch } from '@/components/exercise-search';
-import { Button, Card, Empty, HeaderButton, IconButton, ListCard, ListRow, Page, PageHeader, Stat, text } from '@/components/ui';
+import {
+  Button,
+  Card,
+  Empty,
+  HeaderButton,
+  IconButton,
+  ListCard,
+  ListRow,
+  Page,
+  PageHeader,
+  SectionTitle,
+  Stat,
+  text,
+  type IconName,
+} from '@/components/ui';
 import {
   addExerciseToWorkout,
   addSet,
@@ -26,14 +55,16 @@ import {
   saveWorkoutAsRoutine,
   setSetting,
   updateSet,
+  workoutNumber,
   type PrevSet,
   type SetRow,
   type WorkoutDetail,
   type WorkoutExercise,
 } from '@/lib/db';
 import { confirm, notify } from '@/lib/dialog';
-import { fmtDate, fmtDurationShort, fmtSet, fmtVolume, fmtWeight, parseNum } from '@/lib/format';
+import { fmtDate, fmtDurationShort, fmtSet, fmtVolume, fmtWeight, parseNum, plural } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { markPRs, type PR } from '@/lib/records';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -70,6 +101,7 @@ function ActiveWorkout({
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const desktop = useIsDesktop();
+  const celebrate = useCelebrate();
   const [library] = useFocusData(listExercises);
   const { workout, exercises } = detail;
 
@@ -96,7 +128,7 @@ function ActiveWorkout({
     await reload();
   };
   const [restSeconds, setRestSeconds] = useState(90);
-  const [rest, setRest] = useState<{ endAt: number; total: number } | null>(null);
+  const [rest, setRest] = useState<{ id: number; endAt: number; total: number } | null>(null);
 
   useEffect(() => {
     getSetting(db, 'rest_seconds', '90').then((v) => setRestSeconds(Number(v)));
@@ -119,14 +151,26 @@ function ActiveWorkout({
             exercises: prev.exercises.map((ex) =>
               ex.id !== set.workout_exercise_id
                 ? ex
-                : { ...ex, sets: ex.sets.map((s) => (s.id === set.id ? { ...s, ...patch, done: patch.done ? 1 : 0 } : s)) },
+                : {
+                    ...ex,
+                    sets: ex.sets.map((s) => (s.id === set.id ? { ...s, ...patch, done: patch.done ? 1 : 0 } : s)),
+                  },
             ),
           }
         : prev,
     );
     if (patch.done && !set.done) {
-      haptic.tap();
-      if (restSeconds > 0) setRest({ endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000 });
+      const ex = exercises.find((e) => e.id === set.workout_exercise_id);
+      const pr = ex
+        ? markPRs(
+            ex.sets.map((s) => (s.id === set.id ? { ...s, ...patch, done: 1 } : s)),
+            ex.best,
+          )[ex.sets.findIndex((s) => s.id === set.id)]
+        : null;
+      if (ex && pr) celebrate(ex.name, pr);
+      else haptic.tap();
+      if (restSeconds > 0)
+        setRest({ id: Date.now(), endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000 });
     }
   };
 
@@ -150,6 +194,7 @@ function ActiveWorkout({
     await finishWorkout(db, workout.id);
     haptic.success();
     setRest(null);
+    router.setParams({ fresh: '1' }); // show the celebration on the summary
     await sync();
   };
 
@@ -188,9 +233,21 @@ function ActiveWorkout({
           <Stat label="Duration">
             <Elapsed since={workout.started_at} style={text.num} />
           </Stat>
-          <Stat label="Volume" value={fmtVolume(volume)} />
-          <Stat label="Sets" value={String(doneSets.length)} />
-          <Pressable onPress={cycleRest} accessibilityRole="button" accessibilityLabel="Change rest timer" style={{ marginLeft: 'auto' }}>
+          <Stat label="Volume">
+            <Bump value={volume}>
+              <Text style={text.num}>{fmtVolume(volume)}</Text>
+            </Bump>
+          </Stat>
+          <Stat label="Sets">
+            <Bump value={doneSets.length}>
+              <Text style={text.num}>{doneSets.length}</Text>
+            </Bump>
+          </Stat>
+          <Pressable
+            onPress={cycleRest}
+            accessibilityRole="button"
+            accessibilityLabel="Change rest timer"
+            style={{ marginLeft: 'auto' }}>
             <Stat label="Rest timer">
               <Text style={[text.num, { color: C.accent }]}>{restSeconds ? `${restSeconds}s` : 'Off'}</Text>
             </Stat>
@@ -201,7 +258,9 @@ function ActiveWorkout({
           <Empty
             icon="barbell-outline"
             title="Add your first exercise"
-            hint={desktop ? 'Pick one from the library on the right.' : 'Search for a machine or exercise to get started.'}
+            hint={
+              desktop ? 'Pick one from the library on the right.' : 'Search for a machine or exercise to get started.'
+            }
           />
         ) : null}
 
@@ -248,10 +307,13 @@ function ActiveWorkout({
 
       {rest ? (
         <RestBar
+          key={rest.id}
           endAt={rest.endAt}
           total={rest.total}
           bottomInset={insets.bottom}
-          onAdjust={(deltaMs) => setRest({ endAt: rest.endAt + deltaMs, total: Math.max(rest.total + deltaMs, 1000) })}
+          onAdjust={(deltaMs) =>
+            setRest({ ...rest, endAt: rest.endAt + deltaMs, total: Math.max(rest.total + deltaMs, 1000) })
+          }
           onDone={() => setRest(null)}
         />
       ) : null}
@@ -296,6 +358,7 @@ function ExerciseCard({
   onDeleteSet: (setId: number) => void;
   onRemove: () => void;
 }) {
+  const prs = markPRs(ex.sets, ex.best);
   return (
     <Card style={{ padding: S.md, gap: 2 }}>
       <View style={styles.exHead}>
@@ -329,7 +392,7 @@ function ExerciseCard({
           set={set}
           index={i}
           prev={ex.previous[i]}
-          bestWeight={ex.bestWeight}
+          pr={prs[i]}
           onPatch={(patch) => onPatchSet(set, patch)}
           onDelete={() => onDeleteSet(set.id)}
         />
@@ -344,21 +407,47 @@ function SetLine({
   set,
   index,
   prev,
-  bestWeight,
+  pr,
   onPatch,
   onDelete,
 }: {
   set: SetRow;
   index: number;
   prev: PrevSet | undefined;
-  bestWeight: number;
+  pr: PR | null;
   onPatch: (patch: { weight: number | null; reps: number | null; done: boolean }) => void;
   onDelete: () => void;
 }) {
   const [weightText, setWeightText] = useState(fmtWeight(set.weight));
   const [repsText, setRepsText] = useState(set.reps == null ? '' : String(set.reps));
   const done = set.done === 1;
-  const isPR = done && bestWeight > 0 && (set.weight ?? 0) > bestWeight;
+
+  // 0 = open, 1 = done; drives the row colour. `pop` bounces the tick.
+  const doneAnim = useSharedValue(done ? 1 : 0);
+  const prAnim = useSharedValue(pr ? 1 : 0);
+  const pop = useSharedValue(1);
+  useEffect(() => {
+    doneAnim.value = withTiming(done ? 1 : 0, { duration: 220 });
+    if (done)
+      pop.value = withSequence(withTiming(0.7, { duration: 70 }), withSpring(1, { damping: 7, stiffness: 320 }));
+  }, [done, doneAnim, pop]);
+  useEffect(() => {
+    prAnim.value = withTiming(pr ? 1 : 0, { duration: 300 });
+  }, [pr, prAnim]);
+
+  const rowStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      doneAnim.value * (1 - prAnim.value),
+      [0, 1],
+      ['rgba(52,199,123,0)', 'rgba(52,199,123,0.10)'],
+    ),
+    borderColor: interpolateColor(prAnim.value, [0, 1], ['rgba(233,190,88,0)', 'rgba(233,190,88,0.45)']),
+  }));
+  const prGlow = useAnimatedStyle(() => ({ opacity: prAnim.value }));
+  const checkStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pop.value }],
+    backgroundColor: interpolateColor(doneAnim.value, [0, 1], [C.cardHi, C.good]),
+  }));
 
   const changeWeight = (t: string) => {
     setWeightText(t);
@@ -387,12 +476,25 @@ function SetLine({
   };
 
   return (
-    <View style={[styles.setRow, done && styles.setRowDone]}>
-      <Pressable style={styles.colNum} onLongPress={onDelete} accessibilityLabel={`Set ${index + 1}, long press to delete`}>
-        {isPR ? (
-          <Ionicons name="trophy" size={13} color={C.gold} />
+    <Animated.View style={[styles.setRow, rowStyle]}>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, prGlow]}>
+        <LinearGradient
+          colors={['rgba(233,190,88,0.20)', 'rgba(233,190,88,0.03)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: R.sm }]}
+        />
+      </Animated.View>
+      <Pressable
+        style={styles.colNum}
+        onLongPress={onDelete}
+        accessibilityLabel={`Set ${index + 1}, long press to delete`}>
+        {pr ? (
+          <Animated.View entering={ZoomIn.springify().damping(8)}>
+            <Ionicons name="trophy" size={13} color={C.gold} />
+          </Animated.View>
         ) : (
-          <Text style={styles.setNum}>{index + 1}</Text>
+          <Text style={[styles.setNum, done && { color: C.good }]}>{index + 1}</Text>
         )}
       </Pressable>
       <Pressable
@@ -404,9 +506,15 @@ function SetLine({
           setRepsText(prev.reps == null ? '' : String(prev.reps));
           onPatch({ weight: prev.weight, reps: prev.reps, done });
         }}>
-        <Text style={styles.prevText} numberOfLines={1}>
-          {prev ? fmtSet(prev.weight, prev.reps) : '—'}
-        </Text>
+        {pr ? (
+          <Text style={[styles.prevText, { color: C.gold, fontFamily: F.semi }]} numberOfLines={1}>
+            {pr.kind === 'weight' ? 'Weight PR' : pr.kind === 'reps' ? 'Rep PR' : '1RM PR'}
+          </Text>
+        ) : (
+          <Text style={styles.prevText} numberOfLines={1}>
+            {prev ? fmtSet(prev.weight, prev.reps) : '—'}
+          </Text>
+        )}
       </Pressable>
       <TextInput
         value={weightText}
@@ -430,14 +538,16 @@ function SetLine({
       />
       <Pressable
         onPress={toggle}
-        hitSlop={6}
+        hitSlop={8}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
         accessibilityLabel={`Set ${index + 1} done`}
-        style={[styles.colCheck, styles.check, done && { backgroundColor: C.good }]}>
-        <Ionicons name="checkmark" size={16} color={done ? '#06210F' : C.textFaint} />
+        style={styles.colCheck}>
+        <Animated.View style={[styles.check, checkStyle]}>
+          <Ionicons name="checkmark" size={13} color={done ? '#06210F' : C.textFaint} />
+        </Animated.View>
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -445,10 +555,28 @@ function SetLine({
 
 function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
   const db = useSQLiteContext();
+  const desktop = useIsDesktop();
+  const { fresh } = useLocalSearchParams<{ fresh?: string }>();
+  const justFinished = fresh === '1';
   const { workout, exercises } = detail;
   const sets = exercises.flatMap((e) => e.sets);
   const volume = sets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
   const end = workout.finished_at ?? workout.started_at;
+  const [number, setNumber] = useState<number | null>(null);
+
+  useEffect(() => {
+    workoutNumber(db, workout).then(setNumber);
+  }, [db, workout]);
+
+  // Every record set in this workout, in order.
+  const records = exercises.flatMap((ex) =>
+    markPRs(ex.sets, ex.best).flatMap((pr, i) => (pr ? [{ ex, pr, set: ex.sets[i] }] : [])),
+  );
+  const prSetIds = new Set(records.map((r) => r.set.id));
+
+  useEffect(() => {
+    if (justFinished) haptic.record();
+  }, [justFinished]);
 
   const remove = async () => {
     const ok = await confirm({
@@ -468,52 +596,181 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
   };
 
   return (
-    <Page>
-      <Stack.Screen
-        options={{
-          title: 'Summary',
-          headerRight: () => <HeaderButton icon="trash-outline" label="Delete workout" onPress={remove} color={C.danger} />,
-        }}
-      />
-      <PageHeader
-        title={workout.name}
-        sub={fmtDate(end)}
-        right={<Button label="Save as routine" icon="bookmark-outline" small onPress={saveRoutine} />}
-      />
-      <View style={styles.stats}>
-        <Stat label="Duration" value={fmtDurationShort(end - workout.started_at)} />
-        <Stat label="Volume" value={fmtVolume(volume)} />
-        <Stat label="Sets" value={String(sets.length)} />
-      </View>
+    <View style={{ flex: 1 }}>
+      <Page>
+        <Stack.Screen
+          options={{
+            title: justFinished ? '' : 'Summary',
+            headerRight: () => (
+              <HeaderButton icon="trash-outline" label="Delete workout" onPress={remove} color={C.danger} />
+            ),
+          }}
+        />
 
-      <ListCard>
-        {exercises.map((ex, i) => (
-          <ListRow
-            key={ex.id}
-            last={i === exercises.length - 1}
-            onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}
-            style={{ alignItems: 'flex-start' }}>
-            <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
-            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-              <Text style={styles.exName}>{ex.name}</Text>
-              {ex.sets.map((s, n) => (
-                <View key={s.id} style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                  <Text style={[text.faint, { width: 14 }]}>{n + 1}</Text>
-                  <Text style={text.dim}>{fmtSet(s.weight, s.reps)}</Text>
-                  {ex.bestWeight > 0 && (s.weight ?? 0) > ex.bestWeight ? (
-                    <Ionicons name="trophy" size={12} color={C.gold} />
-                  ) : null}
-                </View>
+        {justFinished ? (
+          <View style={styles.hero}>
+            <Animated.View entering={ZoomIn.springify().damping(9)} style={styles.heroBadge}>
+              <LinearGradient colors={[C.accent, '#0E7490']} style={StyleSheet.absoluteFill} />
+              <Ionicons name={records.length ? 'trophy' : 'checkmark'} size={30} color={C.onAccent} />
+            </Animated.View>
+            <Animated.Text
+              entering={FadeInDown.delay(150).duration(350)}
+              style={[text.title, { fontSize: 26, textAlign: 'center' }]}>
+              Workout complete
+            </Animated.Text>
+            <Animated.Text entering={FadeInDown.delay(250).duration(350)} style={[text.dim, { textAlign: 'center' }]}>
+              {number ? `${ordinal(number)} workout` : workout.name}
+              {records.length ? `  ·  ${plural(records.length, 'new record')}` : ''}
+            </Animated.Text>
+          </View>
+        ) : (
+          <PageHeader title={workout.name} sub={fmtDate(end)} />
+        )}
+
+        <Animated.View
+          entering={FadeInDown.delay(justFinished ? 350 : 0).duration(350)}
+          style={[styles.statCards, desktop && { gap: S.md }]}>
+          <StatCard icon="time-outline" label="Duration">
+            <Text style={styles.statBig}>{fmtDurationShort(end - workout.started_at)}</Text>
+          </StatCard>
+          <StatCard icon="barbell-outline" label="Volume">
+            <CountUp
+              value={volume}
+              format={(n) => fmtVolume(n)}
+              delay={justFinished ? 450 : 0}
+              style={styles.statBig}
+            />
+          </StatCard>
+          <StatCard icon="layers-outline" label="Sets">
+            <CountUp value={sets.length} delay={justFinished ? 450 : 0} style={styles.statBig} />
+          </StatCard>
+        </Animated.View>
+
+        {records.length ? (
+          <>
+            <SectionTitle title="New records" />
+            <View style={{ gap: S.sm }}>
+              {records.map((r, i) => (
+                <Animated.View
+                  key={r.set.id}
+                  entering={FadeInDown.delay((justFinished ? 550 : 0) + i * 90).duration(350)}
+                  style={styles.recordCard}>
+                  <LinearGradient
+                    colors={['rgba(233,190,88,0.16)', 'rgba(233,190,88,0.02)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <View style={styles.recordIcon}>
+                    <Ionicons name="trophy" size={14} color="#2A1E05" />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={text.strong} numberOfLines={1}>
+                      {r.ex.name}
+                    </Text>
+                    <Text style={[text.faint, { color: C.gold }]} numberOfLines={1}>
+                      {r.pr.title} · {r.pr.detail}
+                    </Text>
+                  </View>
+                </Animated.View>
               ))}
             </View>
-          </ListRow>
-        ))}
-      </ListCard>
-    </Page>
+          </>
+        ) : null}
+
+        <SectionTitle
+          title="Exercises"
+          right={<Button label="Save as routine" icon="bookmark-outline" kind="ghost" small onPress={saveRoutine} />}
+        />
+        <Animated.View entering={FadeInDown.delay(justFinished ? 650 : 0).duration(350)}>
+          <ListCard>
+            {exercises.map((ex, i) => (
+              <ListRow
+                key={ex.id}
+                last={i === exercises.length - 1}
+                onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}
+                style={{ alignItems: 'flex-start' }}>
+                <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
+                <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+                  <Text style={styles.exName}>{ex.name}</Text>
+                  {ex.sets.map((s, n) => (
+                    <View key={s.id} style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                      <Text style={[text.faint, { width: 14 }]}>{n + 1}</Text>
+                      <Text style={[text.dim, prSetIds.has(s.id) && { color: C.gold }]}>
+                        {fmtSet(s.weight, s.reps)}
+                      </Text>
+                      {prSetIds.has(s.id) ? <Ionicons name="trophy" size={11} color={C.gold} /> : null}
+                    </View>
+                  ))}
+                </View>
+              </ListRow>
+            ))}
+          </ListCard>
+        </Animated.View>
+      </Page>
+      {justFinished ? <Confetti count={records.length ? 70 : 40} originTop="18%" /> : null}
+    </View>
   );
 }
 
+function StatCard({ icon, label, children }: { icon: IconName; label: string; children: ReactNode }) {
+  return (
+    <View style={styles.statCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+        <Ionicons name={icon} size={12} color={C.textFaint} />
+        <Text style={text.faint}>{label}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 const styles = StyleSheet.create({
+  hero: { alignItems: 'center', gap: 6, paddingTop: S.md, paddingBottom: S.lg },
+  heroBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: S.sm,
+  },
+  statCards: { flexDirection: 'row', gap: S.sm },
+  statCard: {
+    flex: 1,
+    gap: 4,
+    padding: S.md,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+  },
+  statBig: { color: C.text, fontFamily: F.display, fontSize: 18, letterSpacing: -0.3, fontVariant: ['tabular-nums'] },
+  recordCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.md,
+    padding: S.md,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(233,190,88,0.35)',
+    overflow: 'hidden',
+  },
+  recordIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: C.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   page: { padding: S.lg, gap: S.md },
   pageDesktop: { paddingHorizontal: 40, paddingTop: S.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
   panel: { width: 360, borderLeftWidth: 1, borderLeftColor: C.border },
@@ -522,13 +779,29 @@ const styles = StyleSheet.create({
   exHead: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginBottom: 6 },
   exName: { color: C.accent, fontSize: 14, fontFamily: F.semi },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: S.sm },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2, paddingHorizontal: 2, borderRadius: R.sm },
+  setRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+    borderRadius: R.sm,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
   setRowDone: { backgroundColor: C.goodDim },
-  colHead: { color: C.textFaint, fontSize: 10, fontFamily: F.semi, letterSpacing: 0.6, textTransform: 'uppercase', textAlign: 'center' },
+  colHead: {
+    color: C.textFaint,
+    fontSize: 10,
+    fontFamily: F.semi,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+  },
   colNum: { width: 28, alignItems: 'center', justifyContent: 'center', minHeight: 32 },
   colPrev: { flex: 1, justifyContent: 'center', minHeight: 32 },
   colInput: { width: 60 },
-  colCheck: { width: 32 },
+  colCheck: { width: 28, alignItems: 'center', justifyContent: 'center' },
   setNum: { color: C.textDim, fontSize: 13, fontFamily: F.semi, textAlign: 'center' },
   prevText: { color: C.textFaint, fontSize: 12, fontFamily: F.regular, textAlign: 'center' },
   input: {
@@ -542,11 +815,5 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   inputDone: { backgroundColor: 'transparent' },
-  check: {
-    height: 30,
-    borderRadius: 7,
-    backgroundColor: C.cardHi,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  check: { width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
 });

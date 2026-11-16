@@ -3,7 +3,10 @@ import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { Pressable, StyleSheet, Text, View, type PressableStateCallbackType } from 'react-native';
 
+import Animated, { FadeInDown } from 'react-native-reanimated';
+
 import { Elapsed } from '@/components/elapsed';
+import { WeekStrip, startOfWeek } from '@/components/week-strip';
 import { Button, Empty, Page, PageHeader, SectionTitle, Stat, text } from '@/components/ui';
 import { createRoutine, getActiveWorkout, listFinishedWorkouts, listRoutines, startWorkout } from '@/lib/db';
 import { confirm } from '@/lib/dialog';
@@ -12,13 +15,6 @@ import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 type PressState = PressableStateCallbackType & { hovered?: boolean };
-
-function startOfWeek(now: Date): number {
-  const d = new Date(now);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Monday
-  return d.getTime();
-}
 
 export default function WorkoutTab() {
   const db = useSQLiteContext();
@@ -30,7 +26,8 @@ export default function WorkoutTab() {
   }));
   const active = data?.active ?? null;
   const routines = data?.routines ?? [];
-  const week = (data?.finished ?? []).filter((w) => (w.finished_at ?? 0) >= startOfWeek(new Date()));
+  const finishedAt = (data?.finished ?? []).map((w) => w.finished_at ?? w.started_at);
+  const week = (data?.finished ?? []).filter((w) => (w.finished_at ?? 0) >= startOfWeek(Date.now()));
 
   const open = (id: number) => router.push({ pathname: '/workout/[id]', params: { id: String(id) } });
 
@@ -54,7 +51,9 @@ export default function WorkoutTab() {
 
   return (
     <Page maxWidth={960} topInset>
-      <PageHeader title="Workout" />
+      <PageHeader title={greeting()} sub={week.length ? motivation(week.length) : 'Ready when you are.'} />
+
+      <WeekStrip finishedAt={finishedAt} />
 
       <View style={styles.weekRow}>
         <Stat label="This week" value={`${week.length} ${week.length === 1 ? 'workout' : 'workouts'}`} />
@@ -63,7 +62,10 @@ export default function WorkoutTab() {
       </View>
 
       {active ? (
-        <Pressable onPress={() => open(active.id)} accessibilityRole="button" style={(s: PressState) => [styles.live, s.hovered && { borderColor: C.good }]}>
+        <Pressable
+          onPress={() => open(active.id)}
+          accessibilityRole="button"
+          style={(s: PressState) => [styles.live, s.hovered && { borderColor: C.good }]}>
           <View style={styles.liveDot} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={text.strong} numberOfLines={1}>
@@ -84,17 +86,29 @@ export default function WorkoutTab() {
         />
       )}
 
-      <SectionTitle title={`Routines${routines.length ? ` · ${routines.length}` : ''}`} right={<Button label="New routine" icon="add" kind="ghost" small onPress={newRoutine} />} />
+      <SectionTitle
+        title={`Routines${routines.length ? ` · ${routines.length}` : ''}`}
+        right={<Button label="New routine" icon="add" kind="ghost" small onPress={newRoutine} />}
+      />
 
       {data && routines.length === 0 ? (
-        <Empty icon="list-outline" title="No routines yet" hint='Create one like "Push day", or save a finished workout as a routine.' />
+        <Empty
+          icon="list-outline"
+          title="No routines yet"
+          hint='Create one like "Push day", or save a finished workout as a routine.'
+        />
       ) : (
         <View style={styles.grid}>
-          {routines.map((r) => (
-            <Pressable
+          {routines.map((r, i) => (
+            <AnimatedPressable
               key={r.id}
+              entering={FadeInDown.delay(i * 60).duration(300)}
               onPress={() => router.push({ pathname: '/routine/[id]', params: { id: String(r.id) } })}
-              style={(s: PressState) => [styles.routine, desktop && styles.routineDesktop, s.hovered && { borderColor: C.borderHi }]}>
+              style={(s: PressState) => [
+                styles.routine,
+                desktop && styles.routineDesktop,
+                s.hovered && { borderColor: C.borderHi },
+              ]}>
               <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                 <Text style={text.h2} numberOfLines={1}>
                   {r.name}
@@ -106,7 +120,7 @@ export default function WorkoutTab() {
               {r.exercise_count > 0 ? (
                 <Button label="Start" icon="play" kind="secondary" small onPress={() => start(r.id)} />
               ) : null}
-            </Pressable>
+            </AnimatedPressable>
           ))}
         </View>
       )}
@@ -114,8 +128,24 @@ export default function WorkoutTab() {
   );
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 5) return 'Late session?';
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function motivation(workoutsThisWeek: number): string {
+  if (workoutsThisWeek === 1) return 'One workout this week. Keep it rolling.';
+  if (workoutsThisWeek < 4) return `${workoutsThisWeek} workouts this week. Nice momentum.`;
+  return `${workoutsThisWeek} workouts this week. You're on fire.`;
+}
+
 const styles = StyleSheet.create({
-  weekRow: { flexDirection: 'row', gap: 28, marginBottom: S.sm },
+  weekRow: { flexDirection: 'row', gap: 28, marginTop: S.sm, marginBottom: S.sm },
   live: {
     flexDirection: 'row',
     alignItems: 'center',

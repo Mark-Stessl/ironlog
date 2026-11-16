@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { SEED_EXERCISES } from './exercise-data';
 import { defaultWorkoutName, est1RM } from './format';
+import { addToBest, NO_BEST, type Best } from './records';
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ export type WorkoutExercise = {
   equipment: string;
   sets: SetRow[];
   previous: PrevSet[]; // sets from the last finished session of this exercise
-  bestWeight: number; // heaviest completed set before this workout
+  best: Best; // records from workouts before this one
 };
 
 export type WorkoutDetail = { workout: Workout; exercises: WorkoutExercise[] };
@@ -332,10 +333,27 @@ async function previousSets(db: SQLiteDatabase, exerciseId: number, excludeWorko
   );
 }
 
+/** Records for an exercise from all workouts finished before `workout` started. */
+async function bestBefore(db: SQLiteDatabase, exerciseId: number, workout: Workout): Promise<Best> {
+  const sets = await db.getAllAsync<{ workout_id: number; weight: number | null; reps: number | null }>(
+    `SELECT w.id AS workout_id, s.weight, s.reps FROM sets s
+     JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN workouts w ON w.id = we.workout_id
+     WHERE we.exercise_id = ? AND s.done = 1 AND w.finished_at IS NOT NULL
+       AND w.id != ? AND w.started_at <= ?`,
+    exerciseId,
+    workout.id,
+    workout.started_at,
+  );
+  let best = NO_BEST;
+  for (const set of sets) best = addToBest(best, set);
+  return { ...best, sessions: new Set(sets.map((s) => s.workout_id)).size };
+}
+
 export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number): Promise<WorkoutDetail | null> {
   const workout = await db.getFirstAsync<Workout>('SELECT * FROM workouts WHERE id = ?', workoutId);
   if (!workout) return null;
-  const rows = await db.getAllAsync<Omit<WorkoutExercise, 'sets' | 'previous' | 'bestWeight'>>(
+  const rows = await db.getAllAsync<Omit<WorkoutExercise, 'sets' | 'previous' | 'best'>>(
     `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment
      FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
      WHERE we.workout_id = ? ORDER BY we.position`,
@@ -348,19 +366,11 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number): P
   );
   const exercises: WorkoutExercise[] = [];
   for (const r of rows) {
-    const best = await db.getFirstAsync<{ best: number | null }>(
-      `SELECT MAX(s.weight) AS best FROM sets s
-       JOIN workout_exercises we ON we.id = s.workout_exercise_id
-       JOIN workouts w ON w.id = we.workout_id
-       WHERE we.exercise_id = ? AND s.done = 1 AND w.finished_at IS NOT NULL AND w.id != ?`,
-      r.exercise_id,
-      workoutId,
-    );
     exercises.push({
       ...r,
       sets: allSets.filter((s) => s.workout_exercise_id === r.id),
       previous: await previousSets(db, r.exercise_id, workoutId),
-      bestWeight: best?.best ?? 0,
+      best: await bestBefore(db, r.exercise_id, workout),
     });
   }
   return { workout, exercises };
@@ -457,6 +467,17 @@ export async function finishWorkout(db: SQLiteDatabase, workoutId: number): Prom
     }
   });
   return kept;
+}
+
+/** How many workouts were finished up to and including this one (1 = first ever). */
+export async function workoutNumber(db: SQLiteDatabase, workout: Workout): Promise<number> {
+  const row = await db.getFirstAsync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM workouts WHERE finished_at IS NOT NULL AND (started_at < ? OR (started_at = ? AND id <= ?))',
+    workout.started_at,
+    workout.started_at,
+    workout.id,
+  );
+  return row?.n ?? 1;
 }
 
 export async function deleteWorkout(db: SQLiteDatabase, workoutId: number): Promise<void> {

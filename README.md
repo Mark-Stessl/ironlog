@@ -19,6 +19,9 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Custom exercises** for machines that are missing
 - **Routines**: build "Push Day" once and start it with one tap, or save a finished workout as a routine
 - **History** of finished workouts with duration, volume and sets
+- **PR celebrations**: beat your heaviest weight, your reps at that weight, or your estimated 1RM and you get confetti, a "New PR" banner and a gold set row
+- **Workout complete screen** with your records, counting-up stats and which workout number it was
+- **Week strip and streak** on the home screen
 - **Personal records** per exercise (heaviest set, estimated 1RM, best session volume) and a trophy on sets that beat your previous best weight
 
 ## Run it on your phone

@@ -126,8 +126,12 @@ export function ExerciseSearch({
             {pickIcon ? <Ionicons name="add" size={18} color={C.accent} /> : null}
           </Pressable>
         )}
-        ListEmptyComponent={<Empty icon="search" title="No exercise found" hint="Check the spelling or remove a filter." />}
-        ListFooterComponent={footer ? <View style={{ paddingHorizontal: S.sm }}>{footer(query.trim())}</View> : undefined}
+        ListEmptyComponent={
+          <Empty icon="search" title="No exercise found" hint="Check the spelling or remove a filter." />
+        }
+        ListFooterComponent={
+          footer ? <View style={{ paddingHorizontal: S.sm }}>{footer(query.trim())}</View> : undefined
+        }
       />
     </View>
   );

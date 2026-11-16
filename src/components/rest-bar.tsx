@@ -1,5 +1,18 @@
-import { useEffect, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeOutDown,
+  cancelAnimation,
+  interpolateColor,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { fmtDuration } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
@@ -20,43 +33,88 @@ export function RestBar({
   onDone: () => void;
 }) {
   const [now, setNow] = useState(() => Date.now());
+  const [go, setGo] = useState(false);
+  const finished = useRef(false);
   const remaining = endAt - now;
+
+  // Smooth progress line: animate from where we are to empty over the time left.
+  const progress = useSharedValue(Math.min(1, Math.max(0, (endAt - Date.now()) / total)));
+  const goAnim = useSharedValue(0);
+  const pulse = useSharedValue(1);
+
+  useEffect(() => {
+    const left = Math.max(0, endAt - Date.now());
+    progress.value = Math.min(1, left / total);
+    progress.value = withTiming(0, { duration: left, easing: Easing.linear });
+    return () => cancelAnimation(progress);
+  }, [endAt, total, progress]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(t);
   }, []);
 
+  const lastSeconds = remaining > 0 && remaining <= 3500;
   useEffect(() => {
-    if (remaining <= 0) {
-      haptic.success();
-      onDone();
-    }
-  }, [remaining, onDone]);
+    pulse.value = lastSeconds
+      ? withRepeat(withSequence(withTiming(1.12, { duration: 180 }), withTiming(1, { duration: 320 })), -1)
+      : withTiming(1, { duration: 150 });
+  }, [lastSeconds, pulse]);
 
-  const progress = Math.min(1, Math.max(0, remaining / total));
+  // Time's up: flash green for a moment, then close.
+  useEffect(() => {
+    if (remaining > 0 || finished.current) return;
+    finished.current = true;
+    haptic.success();
+    setGo(true);
+    goAnim.value = withTiming(1, { duration: 250 });
+    const t = setTimeout(onDone, 1400);
+    return () => clearTimeout(t);
+  }, [remaining, onDone, goAnim]);
+
+  const fill = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
+  const barStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(goAnim.value, [0, 1], [C.borderHi, 'rgba(52,199,123,0.6)']),
+    backgroundColor: interpolateColor(goAnim.value, [0, 1], [C.cardHi, '#0F2A1D']),
+  }));
+  const timeStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
   return (
     <View style={[styles.wrap, { bottom: bottomInset + S.md }]} pointerEvents="box-none">
-      <View style={styles.bar}>
+      <Animated.View
+        entering={FadeInDown.springify().damping(15)}
+        exiting={FadeOutDown.duration(200)}
+        style={[styles.bar, barStyle]}>
         <View style={styles.track}>
-          <View style={[styles.fill, { width: `${progress * 100}%` }]} />
+          <Animated.View style={[styles.fill, fill]} />
         </View>
-        <View style={styles.row}>
-          <Text style={styles.label}>Rest</Text>
-          <Text style={styles.time}>{fmtDuration(Math.max(0, remaining))}</Text>
-          <View style={{ flex: 1 }} />
-          <Pressable onPress={() => onAdjust(-15000)} style={styles.btn} accessibilityLabel="15 seconds less rest">
-            <Text style={styles.btnText}>−15</Text>
-          </Pressable>
-          <Pressable onPress={() => onAdjust(15000)} style={styles.btn} accessibilityLabel="15 seconds more rest">
-            <Text style={styles.btnText}>+15</Text>
-          </Pressable>
-          <Pressable onPress={onDone} style={[styles.btn, { backgroundColor: C.accent }]} accessibilityLabel="Skip rest">
-            <Text style={[styles.btnText, { color: C.onAccent }]}>Skip</Text>
-          </Pressable>
-        </View>
-      </View>
+        {go ? (
+          <View style={[styles.row, { justifyContent: 'center' }]}>
+            <Ionicons name="flash" size={16} color={C.good} />
+            <Text style={[styles.time, { color: C.good, fontSize: 16 }]}>Time for your next set</Text>
+          </View>
+        ) : (
+          <View style={styles.row}>
+            <Text style={styles.label}>Rest</Text>
+            <Animated.Text style={[styles.time, lastSeconds && { color: C.accent }, timeStyle]}>
+              {fmtDuration(Math.max(0, remaining))}
+            </Animated.Text>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={() => onAdjust(-15000)} style={styles.btn} accessibilityLabel="15 seconds less rest">
+              <Text style={styles.btnText}>−15</Text>
+            </Pressable>
+            <Pressable onPress={() => onAdjust(15000)} style={styles.btn} accessibilityLabel="15 seconds more rest">
+              <Text style={styles.btnText}>+15</Text>
+            </Pressable>
+            <Pressable
+              onPress={onDone}
+              style={[styles.btn, { backgroundColor: C.accent }]}
+              accessibilityLabel="Skip rest">
+              <Text style={[styles.btnText, { color: C.onAccent }]}>Skip</Text>
+            </Pressable>
+          </View>
+        )}
+      </Animated.View>
     </View>
   );
 }
@@ -66,15 +124,20 @@ const styles = StyleSheet.create({
   bar: {
     width: '100%',
     maxWidth: 520,
-    backgroundColor: C.cardHi,
     borderWidth: 1,
-    borderColor: C.borderHi,
     borderRadius: R.lg,
     overflow: 'hidden',
   },
   track: { height: 2, backgroundColor: C.border },
   fill: { height: 2, backgroundColor: C.accent },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: S.sm, paddingHorizontal: S.md },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: S.sm,
+    paddingHorizontal: S.md,
+    minHeight: 46,
+  },
   label: { color: C.textDim, fontSize: 12, fontFamily: F.medium, marginRight: 4 },
   time: { color: C.text, fontSize: 18, fontFamily: F.displaySemi, fontVariant: ['tabular-nums'] },
   btn: {

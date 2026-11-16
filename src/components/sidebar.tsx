@@ -13,7 +13,12 @@ import { C, F, R, S } from '@/lib/theme';
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
 const NAV: { label: string; icon: IconName; href: '/' | '/history' | '/exercises'; match: (p: string) => boolean }[] = [
-  { label: 'Workout', icon: 'barbell-outline', href: '/', match: (p) => p === '/' || p.startsWith('/workout') || p.startsWith('/routine') },
+  {
+    label: 'Workout',
+    icon: 'barbell-outline',
+    href: '/',
+    match: (p) => p === '/' || p.startsWith('/workout') || p.startsWith('/routine'),
+  },
   { label: 'History', icon: 'time-outline', href: '/history', match: (p) => p.startsWith('/history') },
   { label: 'Exercises', icon: 'search-outline', href: '/exercises', match: (p) => p.startsWith('/exercise') },
 ];
@@ -24,9 +29,17 @@ export function Sidebar() {
   const pathname = usePathname();
   const [active, setActive] = useState<Workout | null>(null);
 
-  // Re-check for a running workout whenever the page changes.
+  // Re-check for a running workout when the page changes, and every few seconds
+  // (finishing a workout doesn't change the page).
   useEffect(() => {
-    getActiveWorkout(db).then(setActive);
+    let alive = true;
+    const check = () => getActiveWorkout(db).then((w) => alive && setActive(w));
+    check();
+    const t = setInterval(check, 3000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, [db, pathname]);
 
   return (
