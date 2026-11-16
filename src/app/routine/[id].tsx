@@ -1,16 +1,18 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ExerciseImage } from '@/components/exercise-image';
-import { Button, Card, Empty, HeaderButton, text } from '@/components/ui';
+import { ExerciseSearch } from '@/components/exercise-search';
+import { Button, Empty, HeaderButton, IconButton, ListCard, ListRow, text } from '@/components/ui';
 import {
+  addExerciseToRoutine,
   deleteRoutine,
   getActiveWorkout,
   getRoutine,
+  listExercises,
   removeRoutineExercise,
   renameRoutine,
   setRoutineExerciseSets,
@@ -19,7 +21,8 @@ import {
   type RoutineExercise,
 } from '@/lib/db';
 import { confirm, notify } from '@/lib/dialog';
-import { C, R, S } from '@/lib/theme';
+import { plural } from '@/lib/format';
+import { C, F, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 export default function RoutineScreen() {
@@ -42,6 +45,8 @@ function RoutineEditor({
   reload: () => Promise<void>;
 }) {
   const db = useSQLiteContext();
+  const desktop = useIsDesktop();
+  const [library] = useFocusData(listExercises);
   const [name, setName] = useState(routine.name);
 
   const remove = async () => {
@@ -67,95 +72,124 @@ function RoutineEditor({
     router.replace({ pathname: '/workout/[id]', params: { id: String(workoutId) } });
   };
 
-  return (
-    <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+  const content = (
+    <ScrollView contentContainerStyle={[styles.page, desktop && styles.pageDesktop]} keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
           headerRight: () => <HeaderButton icon="trash-outline" label="Delete routine" onPress={remove} color={C.danger} />,
         }}
       />
-      <Text style={text.label}>Routine name</Text>
       <TextInput
         value={name}
         onChangeText={setName}
         onEndEditing={() => renameRoutine(db, routine.id, name)}
-        placeholder="e.g. Push Day"
+        onBlur={() => renameRoutine(db, routine.id, name)}
+        placeholder="Routine name, e.g. Push day"
         placeholderTextColor={C.textFaint}
-        selectTextOnFocus
         style={styles.nameInput}
       />
+      <Text style={text.faint}>
+        {plural(exercises.length, 'exercise')} ·{' '}
+        {plural(exercises.reduce((n, e) => n + e.target_sets, 0), 'set')}
+      </Text>
 
       {exercises.length === 0 ? (
-        <Empty icon="list-outline" title="No exercises yet" hint="Add the machines and exercises for this routine." />
-      ) : null}
+        <Empty
+          icon="list-outline"
+          title="No exercises yet"
+          hint={desktop ? 'Pick exercises from the library on the right.' : 'Add the machines and exercises for this routine.'}
+        />
+      ) : (
+        <ListCard style={{ marginTop: S.sm }}>
+          {exercises.map((ex, i) => (
+            <ListRow key={ex.id} last={i === exercises.length - 1}>
+              <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={text.strong} numberOfLines={1}>
+                  {ex.name}
+                </Text>
+                <Text style={text.faint} numberOfLines={1}>
+                  {ex.muscle} · {ex.equipment}
+                </Text>
+              </View>
+              <View style={styles.stepper}>
+                <IconButton
+                  icon="remove"
+                  label={`One set less for ${ex.name}`}
+                  size={15}
+                  onPress={async () => {
+                    await setRoutineExerciseSets(db, ex.id, ex.target_sets - 1);
+                    await reload();
+                  }}
+                />
+                <Text style={styles.stepperValue}>{plural(ex.target_sets, 'set')}</Text>
+                <IconButton
+                  icon="add"
+                  label={`One set more for ${ex.name}`}
+                  size={15}
+                  onPress={async () => {
+                    await setRoutineExerciseSets(db, ex.id, ex.target_sets + 1);
+                    await reload();
+                  }}
+                />
+              </View>
+              <IconButton
+                icon="close"
+                label={`Remove ${ex.name}`}
+                color={C.textFaint}
+                size={16}
+                onPress={async () => {
+                  await removeRoutineExercise(db, ex.id);
+                  await reload();
+                }}
+              />
+            </ListRow>
+          ))}
+        </ListCard>
+      )}
 
-      {exercises.map((ex) => (
-        <Card key={ex.id} style={styles.row}>
-          <ExerciseImage name={ex.name} equipment={ex.equipment} size={40} radius={8} />
-          <View style={{ flex: 1 }}>
-            <Text style={[text.body, { fontWeight: '700' }]}>{ex.name}</Text>
-            <Text style={text.faint}>
-              {ex.muscle} · {ex.equipment}
-            </Text>
-          </View>
-          <View style={styles.stepper}>
-            <Pressable
-              hitSlop={8}
-              accessibilityLabel={`One set less for ${ex.name}`}
-              onPress={async () => {
-                await setRoutineExerciseSets(db, ex.id, ex.target_sets - 1);
-                await reload();
-              }}>
-              <Ionicons name="remove-circle-outline" size={26} color={C.textDim} />
-            </Pressable>
-            <Text style={styles.stepperValue}>{ex.target_sets} sets</Text>
-            <Pressable
-              hitSlop={8}
-              accessibilityLabel={`One set more for ${ex.name}`}
-              onPress={async () => {
-                await setRoutineExerciseSets(db, ex.id, ex.target_sets + 1);
-                await reload();
-              }}>
-              <Ionicons name="add-circle-outline" size={26} color={C.textDim} />
-            </Pressable>
-          </View>
-          <Pressable
-            hitSlop={8}
-            accessibilityLabel={`Remove ${ex.name}`}
-            onPress={async () => {
-              await removeRoutineExercise(db, ex.id);
-              await reload();
-            }}>
-            <Ionicons name="close" size={22} color={C.textFaint} />
-          </Pressable>
-        </Card>
-      ))}
-
-      <Button
-        label="Add Exercise"
-        icon="add"
-        kind="secondary"
-        onPress={() => router.push({ pathname: '/exercise-picker', params: { routineId: String(routine.id) } })}
-      />
-      {exercises.length > 0 ? <Button label="Start Routine" icon="play" onPress={start} /> : null}
+      <View style={styles.actions}>
+        {!desktop ? (
+          <Button
+            label="Add exercise"
+            icon="add"
+            onPress={() => router.push({ pathname: '/exercise-picker', params: { routineId: String(routine.id) } })}
+            style={{ flex: 1 }}
+          />
+        ) : null}
+        {exercises.length > 0 ? (
+          <Button label="Start routine" icon="play" kind="primary" onPress={start} style={desktop ? undefined : { flex: 1 }} />
+        ) : null}
+      </View>
     </ScrollView>
+  );
+
+  if (!desktop) return content;
+  return (
+    <View style={{ flex: 1, flexDirection: 'row' }}>
+      <View style={{ flex: 1 }}>{content}</View>
+      <View style={styles.panel}>
+        <ExerciseSearch
+          exercises={library ?? []}
+          pickIcon="add"
+          padding={20}
+          header={<Text style={text.h2}>Add exercise</Text>}
+          onPick={async (ex) => {
+            await addExerciseToRoutine(db, routine.id, ex.id);
+            await reload();
+          }}
+        />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { padding: S.lg, gap: S.md, paddingBottom: S.xxl },
-  nameInput: {
-    height: 52,
-    borderRadius: R.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    backgroundColor: C.card,
-    color: C.text,
-    fontSize: 20,
-    fontWeight: '800',
-    paddingHorizontal: S.md,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md },
-  stepper: { flexDirection: 'row', alignItems: 'center', gap: S.xs },
-  stepperValue: { color: C.text, fontSize: 14, fontWeight: '700', minWidth: 48, textAlign: 'center' },
+  page: { padding: S.lg, gap: 6, paddingBottom: S.xxl },
+  pageDesktop: { paddingHorizontal: 40, paddingTop: S.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  panel: { width: 360, borderLeftWidth: 1, borderLeftColor: C.border },
+  nameInput: { color: C.text, fontSize: 22, fontFamily: F.display, letterSpacing: -0.5, paddingVertical: 2 },
+  stepper: { flexDirection: 'row', alignItems: 'center' },
+  stepperValue: { color: C.textDim, fontSize: 12, fontFamily: F.medium, minWidth: 44, textAlign: 'center' },
+  actions: { flexDirection: 'row', gap: S.sm, marginTop: S.md },
 });

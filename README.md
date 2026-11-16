@@ -36,6 +36,10 @@ Scan the QR code with Expo Go (Android) or the camera app (iPhone). Phone and co
 
 If Expo Go says the project needs a newer SDK than it supports, update Expo Go, or create a development build with `npx expo run:android`.
 
+## Layout
+
+On phones the app uses bottom tabs. In a browser window wider than 900 px it switches to a desktop layout like Hevy's web app: a sidebar, the exercise library next to the workout and routine editor, and a list + detail view for exercises.
+
 ## Run it in the browser
 
 ```bash

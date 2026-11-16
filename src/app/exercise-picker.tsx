@@ -1,6 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { View } from 'react-native';
 
 import { ExerciseSearch } from '@/components/exercise-search';
 import { Button } from '@/components/ui';
@@ -25,15 +24,15 @@ export default function ExercisePicker() {
       exercises={exercises ?? []}
       onPick={pick}
       autoFocus
+      pickIcon="add"
       footer={(query) => (
-        <View style={{ marginTop: S.lg }}>
-          <Button
-            label={query ? `Create "${query}"` : 'Create Custom Exercise'}
-            icon="add"
-            kind="secondary"
-            onPress={() => router.push({ pathname: '/exercise-new', params: { name: query } })}
-          />
-        </View>
+        <Button
+          label={query ? `Create "${query}"` : 'Create custom exercise'}
+          icon="add"
+          kind="ghost"
+          onPress={() => router.push({ pathname: '/exercise-new', params: { name: query } })}
+          style={{ marginTop: S.md, alignSelf: 'flex-start' }}
+        />
       )}
     />
   );

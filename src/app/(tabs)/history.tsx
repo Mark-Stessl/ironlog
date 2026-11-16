@@ -1,52 +1,55 @@
 import { router } from 'expo-router';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
-import { Card, Empty, text } from '@/components/ui';
+import { Empty, ListCard, ListRow, Page, PageHeader, text } from '@/components/ui';
 import { listFinishedWorkouts } from '@/lib/db';
 import { fmtDate, fmtDurationShort, fmtVolume } from '@/lib/format';
-import { S } from '@/lib/theme';
+import { C, S } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 export default function HistoryTab() {
   const [workouts] = useFocusData(listFinishedWorkouts);
+  const list = workouts ?? [];
 
   return (
-    <FlatList
-      data={workouts ?? []}
-      keyExtractor={(w) => String(w.id)}
-      contentContainerStyle={{ padding: S.lg, gap: S.md, paddingBottom: S.xxl }}
-      ListEmptyComponent={
-        workouts ? (
-          <Empty icon="calendar-outline" title="No workouts yet" hint="Finished workouts show up here." />
-        ) : undefined
-      }
-      renderItem={({ item: w }) => (
-        <Pressable onPress={() => router.push({ pathname: '/workout/[id]', params: { id: String(w.id) } })}>
-          <Card style={{ gap: S.xs }}>
-            <Text style={text.h2}>{w.name}</Text>
-            <Text style={text.dim}>{fmtDate(w.finished_at ?? w.started_at)}</Text>
-            <View style={{ flexDirection: 'row', gap: S.lg, marginTop: S.xs }}>
-              <Stat label="Time" value={fmtDurationShort((w.finished_at ?? w.started_at) - w.started_at)} />
-              <Stat label="Volume" value={fmtVolume(w.volume)} />
-              <Stat label="Sets" value={String(w.set_count)} />
-            </View>
-            {w.exercise_names ? (
-              <Text style={[text.dim, { marginTop: S.xs }]} numberOfLines={2}>
-                {w.exercise_names}
-              </Text>
-            ) : null}
-          </Card>
-        </Pressable>
+    <Page topInset>
+      <PageHeader title="History" sub={workouts ? `${list.length} ${list.length === 1 ? 'workout' : 'workouts'}` : undefined} />
+      {workouts && list.length === 0 ? (
+        <Empty icon="time-outline" title="No workouts yet" hint="Finished workouts show up here." />
+      ) : (
+        <ListCard>
+          {list.map((w, i) => {
+            const end = w.finished_at ?? w.started_at;
+            return (
+              <ListRow
+                key={w.id}
+                last={i === list.length - 1}
+                onPress={() => router.push({ pathname: '/workout/[id]', params: { id: String(w.id) } })}
+                style={{ alignItems: 'flex-start', paddingVertical: S.md }}>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: S.sm }}>
+                    <Text style={[text.strong, { flexShrink: 1 }]} numberOfLines={1}>
+                      {w.name}
+                    </Text>
+                    <Text style={text.faint}>{fmtDate(end)}</Text>
+                  </View>
+                  {w.exercise_names ? (
+                    <Text style={text.faint} numberOfLines={1}>
+                      {w.exercise_names}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                  <Text style={[text.dim, { color: C.text, fontVariant: ['tabular-nums'] }]}>{fmtVolume(w.volume)}</Text>
+                  <Text style={text.faint}>
+                    {fmtDurationShort(end - w.started_at)} · {w.set_count} sets
+                  </Text>
+                </View>
+              </ListRow>
+            );
+          })}
+        </ListCard>
       )}
-    />
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <View>
-      <Text style={text.faint}>{label}</Text>
-      <Text style={[text.body, { fontWeight: '700' }]}>{value}</Text>
-    </View>
+    </Page>
   );
 }

@@ -3,21 +3,24 @@ import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Elapsed } from '@/components/elapsed';
 import { ExerciseImage } from '@/components/exercise-image';
 import { RestBar } from '@/components/rest-bar';
-import { Button, Card, Empty, HeaderButton, text } from '@/components/ui';
+import { ExerciseSearch } from '@/components/exercise-search';
+import { Button, Card, Empty, HeaderButton, IconButton, ListCard, ListRow, Page, PageHeader, Stat, text } from '@/components/ui';
 import {
+  addExerciseToWorkout,
   addSet,
   deleteSet,
   deleteWorkout,
   finishWorkout,
   getSetting,
   getWorkoutDetail,
+  listExercises,
   removeWorkoutExercise,
   renameWorkout,
   saveWorkoutAsRoutine,
@@ -31,7 +34,7 @@ import {
 import { confirm, notify } from '@/lib/dialog';
 import { fmtDate, fmtDurationShort, fmtSet, fmtVolume, fmtWeight, parseNum } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { C, R, S } from '@/lib/theme';
+import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 const REST_OPTIONS = [0, 60, 90, 120, 150, 180];
@@ -61,14 +64,37 @@ function ActiveWorkout({
 }: {
   detail: WorkoutDetail;
   reload: () => Promise<void>;
-  setDetail: (d: WorkoutDetail) => void;
+  setDetail: Dispatch<SetStateAction<WorkoutDetail | null | undefined>>;
 }) {
   useKeepAwake();
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
+  const desktop = useIsDesktop();
+  const [library] = useFocusData(listExercises);
   const { workout, exercises } = detail;
 
   const [name, setName] = useState(workout.name);
+
+  // Set edits are shown at once and saved in the background. A reload waits for
+  // those saves, and is thrown away (and redone) if you edited a set while it was
+  // loading, so it can never bring back old values (e.g. un-tick a set).
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+  const edits = useRef(0);
+  const save = (fn: () => Promise<unknown>) => {
+    writes.current = writes.current.then(fn, fn);
+  };
+  const sync = async () => {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const seen = edits.current;
+      await writes.current;
+      const fresh = await getWorkoutDetail(db, workout.id);
+      if (seen === edits.current) {
+        setDetail(fresh);
+        return;
+      }
+    }
+    await reload();
+  };
   const [restSeconds, setRestSeconds] = useState(90);
   const [rest, setRest] = useState<{ endAt: number; total: number } | null>(null);
 
@@ -84,15 +110,20 @@ function ActiveWorkout({
 
   /** Saves a set and updates it on screen without reloading everything. */
   const patchSet = (set: SetRow, patch: { weight: number | null; reps: number | null; done: boolean }) => {
-    updateSet(db, set.id, patch);
-    setDetail({
-      workout,
-      exercises: exercises.map((ex) =>
-        ex.id !== set.workout_exercise_id
-          ? ex
-          : { ...ex, sets: ex.sets.map((s) => (s.id === set.id ? { ...s, ...patch, done: patch.done ? 1 : 0 } : s)) },
-      ),
-    });
+    save(() => updateSet(db, set.id, patch));
+    edits.current += 1;
+    setDetail((prev) =>
+      prev
+        ? {
+            ...prev,
+            exercises: prev.exercises.map((ex) =>
+              ex.id !== set.workout_exercise_id
+                ? ex
+                : { ...ex, sets: ex.sets.map((s) => (s.id === set.id ? { ...s, ...patch, done: patch.done ? 1 : 0 } : s)) },
+            ),
+          }
+        : prev,
+    );
     if (patch.done && !set.done) {
       haptic.tap();
       if (restSeconds > 0) setRest({ endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000 });
@@ -114,11 +145,12 @@ function ActiveWorkout({
       confirmLabel: 'Finish',
     });
     if (!ok) return;
+    await writes.current;
     await renameWorkout(db, workout.id, name);
     await finishWorkout(db, workout.id);
     haptic.success();
     setRest(null);
-    await reload();
+    await sync();
   };
 
   const discard = async () => {
@@ -133,44 +165,44 @@ function ActiveWorkout({
     router.back();
   };
 
-  return (
+  const addFromPanel = async (exerciseId: number) => {
+    await addExerciseToWorkout(db, workout.id, exerciseId);
+    await sync();
+  };
+
+  const log = (
     <View style={{ flex: 1 }}>
-      <Stack.Screen
-        options={{
-          title: 'Workout',
-          headerRight: () => <HeaderButton label="Finish" onPress={finish} color={C.good} />,
-        }}
-      />
       <ScrollView
-        contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 140 }]}
+        contentContainerStyle={[styles.page, desktop && styles.pageDesktop, { paddingBottom: insets.bottom + 120 }]}
         keyboardShouldPersistTaps="handled">
         <TextInput
           value={name}
           onChangeText={setName}
           onEndEditing={() => renameWorkout(db, workout.id, name)}
+          onBlur={() => renameWorkout(db, workout.id, name)}
           placeholder="Workout name"
           placeholderTextColor={C.textFaint}
           style={styles.nameInput}
         />
         <View style={styles.stats}>
-          <StatBlock label="Duration">
-            <Elapsed since={workout.started_at} style={styles.statValue} />
-          </StatBlock>
-          <StatBlock label="Volume">
-            <Text style={styles.statValue}>{fmtVolume(volume)}</Text>
-          </StatBlock>
-          <StatBlock label="Sets">
-            <Text style={styles.statValue}>{doneSets.length}</Text>
-          </StatBlock>
-          <Pressable onPress={cycleRest} accessibilityRole="button" accessibilityLabel="Change rest timer">
-            <StatBlock label="Rest timer">
-              <Text style={[styles.statValue, { color: C.accent }]}>{restSeconds ? `${restSeconds}s` : 'Off'}</Text>
-            </StatBlock>
+          <Stat label="Duration">
+            <Elapsed since={workout.started_at} style={text.num} />
+          </Stat>
+          <Stat label="Volume" value={fmtVolume(volume)} />
+          <Stat label="Sets" value={String(doneSets.length)} />
+          <Pressable onPress={cycleRest} accessibilityRole="button" accessibilityLabel="Change rest timer" style={{ marginLeft: 'auto' }}>
+            <Stat label="Rest timer">
+              <Text style={[text.num, { color: C.accent }]}>{restSeconds ? `${restSeconds}s` : 'Off'}</Text>
+            </Stat>
           </Pressable>
         </View>
 
         {exercises.length === 0 ? (
-          <Empty icon="barbell-outline" title="Add your first exercise" hint="Search for a machine or exercise to get started." />
+          <Empty
+            icon="barbell-outline"
+            title="Add your first exercise"
+            hint={desktop ? 'Pick one from the library on the right.' : 'Search for a machine or exercise to get started.'}
+          />
         ) : null}
 
         {exercises.map((ex) => (
@@ -180,11 +212,11 @@ function ActiveWorkout({
             onPatchSet={patchSet}
             onAddSet={async () => {
               await addSet(db, ex.id);
-              await reload();
+              await sync();
             }}
             onDeleteSet={async (setId) => {
               await deleteSet(db, setId);
-              await reload();
+              await sync();
             }}
             onRemove={async () => {
               const ok = await confirm({
@@ -195,18 +227,23 @@ function ActiveWorkout({
               });
               if (!ok) return;
               await removeWorkoutExercise(db, ex.id);
-              await reload();
+              await sync();
             }}
           />
         ))}
 
-        <Button
-          label="Add Exercise"
-          icon="add"
-          onPress={() => router.push({ pathname: '/exercise-picker', params: { workoutId: String(workout.id) } })}
-        />
-        {exercises.length > 0 ? <Text style={[text.faint, { textAlign: 'center' }]}>Long-press a set number to delete the set.</Text> : null}
-        <Button label="Discard Workout" kind="danger" onPress={discard} />
+        {!desktop ? (
+          <Button
+            label="Add exercise"
+            icon="add"
+            kind="primary"
+            onPress={() => router.push({ pathname: '/exercise-picker', params: { workoutId: String(workout.id) } })}
+          />
+        ) : null}
+        <View style={styles.footer}>
+          {exercises.length > 0 ? <Text style={text.faint}>Long-press a set number to delete it.</Text> : <View />}
+          <Button label="Discard workout" kind="danger" small onPress={discard} />
+        </View>
       </ScrollView>
 
       {rest ? (
@@ -220,13 +257,28 @@ function ActiveWorkout({
       ) : null}
     </View>
   );
-}
 
-function StatBlock({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <View>
-      <Text style={text.faint}>{label}</Text>
-      {children}
+    <View style={{ flex: 1, flexDirection: 'row' }}>
+      <Stack.Screen
+        options={{
+          title: 'Workout',
+          headerRight: () => <HeaderButton label="Finish" onPress={finish} color={C.good} />,
+        }}
+      />
+      {log}
+      {desktop ? (
+        // Desktop: exercise library next to the log, like Hevy's web app.
+        <View style={styles.panel}>
+          <ExerciseSearch
+            exercises={library ?? []}
+            pickIcon="add"
+            padding={20}
+            header={<Text style={text.h2}>Add exercise</Text>}
+            onPick={(ex) => addFromPanel(ex.id)}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -245,26 +297,26 @@ function ExerciseCard({
   onRemove: () => void;
 }) {
   return (
-    <Card style={{ paddingHorizontal: S.md, gap: S.xs }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: S.xs }}>
+    <Card style={{ padding: S.md, gap: 2 }}>
+      <View style={styles.exHead}>
         <Pressable
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: S.md }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}
           onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}>
-          <ExerciseImage name={ex.name} equipment={ex.equipment} size={44} radius={10} />
-          <View style={{ flex: 1 }}>
-            <Text style={[text.h2, { color: C.accent }]}>{ex.name}</Text>
-            <Text style={text.faint}>
+          <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.exName} numberOfLines={1}>
+              {ex.name}
+            </Text>
+            <Text style={text.faint} numberOfLines={1}>
               {ex.muscle} · {ex.equipment}
             </Text>
           </View>
         </Pressable>
-        <Pressable onPress={onRemove} hitSlop={10} accessibilityLabel={`Remove ${ex.name}`}>
-          <Ionicons name="trash-outline" size={20} color={C.textFaint} />
-        </Pressable>
+        <IconButton icon="trash-outline" label={`Remove ${ex.name}`} onPress={onRemove} color={C.textFaint} size={16} />
       </View>
 
       <View style={styles.setRow}>
-        <Text style={[styles.colHead, { width: 32 }]}>Set</Text>
+        <Text style={[styles.colHead, styles.colNum]}>Set</Text>
         <Text style={[styles.colHead, { flex: 1 }]}>Previous</Text>
         <Text style={[styles.colHead, styles.colInput]}>kg</Text>
         <Text style={[styles.colHead, styles.colInput]}>Reps</Text>
@@ -283,7 +335,7 @@ function ExerciseCard({
         />
       ))}
 
-      <Button label="Add Set" icon="add" kind="secondary" small onPress={onAddSet} style={{ marginTop: S.sm }} />
+      <Button label="Add set" icon="add" kind="ghost" small onPress={onAddSet} style={{ marginTop: 4 }} />
     </Card>
   );
 }
@@ -338,7 +390,7 @@ function SetLine({
     <View style={[styles.setRow, done && styles.setRowDone]}>
       <Pressable style={styles.colNum} onLongPress={onDelete} accessibilityLabel={`Set ${index + 1}, long press to delete`}>
         {isPR ? (
-          <Ionicons name="trophy" size={16} color={C.gold} />
+          <Ionicons name="trophy" size={13} color={C.gold} />
         ) : (
           <Text style={styles.setNum}>{index + 1}</Text>
         )}
@@ -382,8 +434,8 @@ function SetLine({
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
         accessibilityLabel={`Set ${index + 1} done`}
-        style={[styles.colCheck, styles.check, done && { backgroundColor: C.good, borderColor: C.good }]}>
-        <Ionicons name="checkmark" size={18} color={done ? '#06210F' : C.textFaint} />
+        style={[styles.colCheck, styles.check, done && { backgroundColor: C.good }]}>
+        <Ionicons name="checkmark" size={16} color={done ? '#06210F' : C.textFaint} />
       </Pressable>
     </View>
   );
@@ -416,81 +468,83 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <Page>
       <Stack.Screen
         options={{
           title: 'Summary',
           headerRight: () => <HeaderButton icon="trash-outline" label="Delete workout" onPress={remove} color={C.danger} />,
         }}
       />
-      <Text style={text.h1}>{workout.name}</Text>
-      <Text style={text.dim}>{fmtDate(end)}</Text>
+      <PageHeader
+        title={workout.name}
+        sub={fmtDate(end)}
+        right={<Button label="Save as routine" icon="bookmark-outline" small onPress={saveRoutine} />}
+      />
       <View style={styles.stats}>
-        <StatBlock label="Duration">
-          <Text style={styles.statValue}>{fmtDurationShort(end - workout.started_at)}</Text>
-        </StatBlock>
-        <StatBlock label="Volume">
-          <Text style={styles.statValue}>{fmtVolume(volume)}</Text>
-        </StatBlock>
-        <StatBlock label="Sets">
-          <Text style={styles.statValue}>{sets.length}</Text>
-        </StatBlock>
+        <Stat label="Duration" value={fmtDurationShort(end - workout.started_at)} />
+        <Stat label="Volume" value={fmtVolume(volume)} />
+        <Stat label="Sets" value={String(sets.length)} />
       </View>
 
-      {exercises.map((ex) => (
-        <Pressable
-          key={ex.id}
-          onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}>
-          <Card style={{ gap: S.xs }}>
-            <Text style={[text.h2, { color: C.accent }]}>{ex.name}</Text>
-            {ex.sets.map((s, i) => (
-              <View key={s.id} style={{ flexDirection: 'row', gap: S.md, alignItems: 'center' }}>
-                <Text style={[styles.setNum, { width: 24 }]}>{i + 1}</Text>
-                <Text style={text.body}>{fmtSet(s.weight, s.reps)}</Text>
-                {ex.bestWeight > 0 && (s.weight ?? 0) > ex.bestWeight ? (
-                  <Ionicons name="trophy" size={14} color={C.gold} />
-                ) : null}
-              </View>
-            ))}
-          </Card>
-        </Pressable>
-      ))}
-
-      <Button label="Save as Routine" icon="bookmark-outline" kind="secondary" onPress={saveRoutine} />
-    </ScrollView>
+      <ListCard>
+        {exercises.map((ex, i) => (
+          <ListRow
+            key={ex.id}
+            last={i === exercises.length - 1}
+            onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}
+            style={{ alignItems: 'flex-start' }}>
+            <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              <Text style={styles.exName}>{ex.name}</Text>
+              {ex.sets.map((s, n) => (
+                <View key={s.id} style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                  <Text style={[text.faint, { width: 14 }]}>{n + 1}</Text>
+                  <Text style={text.dim}>{fmtSet(s.weight, s.reps)}</Text>
+                  {ex.bestWeight > 0 && (s.weight ?? 0) > ex.bestWeight ? (
+                    <Ionicons name="trophy" size={12} color={C.gold} />
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          </ListRow>
+        ))}
+      </ListCard>
+    </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { padding: S.lg, gap: S.md, paddingBottom: S.xxl },
-  nameInput: { color: C.text, fontSize: 24, fontWeight: '800', paddingVertical: S.xs },
-  stats: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: S.xs },
-  statValue: { color: C.text, fontSize: 17, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingVertical: 4, paddingHorizontal: S.xs, borderRadius: R.sm },
+  page: { padding: S.lg, gap: S.md },
+  pageDesktop: { paddingHorizontal: 40, paddingTop: S.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
+  panel: { width: 360, borderLeftWidth: 1, borderLeftColor: C.border },
+  nameInput: { color: C.text, fontSize: 22, fontFamily: F.display, letterSpacing: -0.5, paddingVertical: 2 },
+  stats: { flexDirection: 'row', gap: 28, marginBottom: S.xs },
+  exHead: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginBottom: 6 },
+  exName: { color: C.accent, fontSize: 14, fontFamily: F.semi },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: S.sm },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2, paddingHorizontal: 2, borderRadius: R.sm },
   setRowDone: { backgroundColor: C.goodDim },
-  colHead: { color: C.textFaint, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', textAlign: 'center' },
-  colNum: { width: 32, alignItems: 'center', justifyContent: 'center', minHeight: 40 },
-  colPrev: { flex: 1, justifyContent: 'center', minHeight: 40 },
-  colInput: { width: 68 },
-  colCheck: { width: 40 },
-  setNum: { color: C.textDim, fontSize: 15, fontWeight: '700', textAlign: 'center' },
-  prevText: { color: C.textDim, fontSize: 14, textAlign: 'center' },
+  colHead: { color: C.textFaint, fontSize: 10, fontFamily: F.semi, letterSpacing: 0.6, textTransform: 'uppercase', textAlign: 'center' },
+  colNum: { width: 28, alignItems: 'center', justifyContent: 'center', minHeight: 32 },
+  colPrev: { flex: 1, justifyContent: 'center', minHeight: 32 },
+  colInput: { width: 60 },
+  colCheck: { width: 32 },
+  setNum: { color: C.textDim, fontSize: 13, fontFamily: F.semi, textAlign: 'center' },
+  prevText: { color: C.textFaint, fontSize: 12, fontFamily: F.regular, textAlign: 'center' },
   input: {
-    height: 40,
-    borderRadius: R.sm,
+    height: 30,
+    borderRadius: 7,
     backgroundColor: C.cardHi,
     color: C.text,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontFamily: F.semi,
     textAlign: 'center',
     paddingVertical: 0,
   },
   inputDone: { backgroundColor: 'transparent' },
   check: {
-    height: 40,
-    borderRadius: R.sm,
-    borderWidth: 1,
-    borderColor: C.border,
+    height: 30,
+    borderRadius: 7,
     backgroundColor: C.cardHi,
     alignItems: 'center',
     justifyContent: 'center',

@@ -60,3 +60,8 @@ export function defaultWorkoutName(now: Date): string {
   if (h < 18) return 'Afternoon Workout';
   return 'Evening Workout';
 }
+
+/** "1 set", "3 sets". */
+export function plural(n: number, word: string): string {
+  return `${n} ${n === 1 ? word : `${word}s`}`;
+}
