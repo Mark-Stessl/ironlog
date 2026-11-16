@@ -1,56 +1,68 @@
-# Welcome to your Expo app 👋
+# Ironlog
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A personal workout tracker in the style of Hevy, built with React Native and Expo.
+Everything is stored on the phone (SQLite), so it works offline in the gym and needs no account or server.
 
-## Get started
+## What works now
 
-1. Install dependencies
+- **Workout logging**: exercises → sets → kg × reps, tick sets off as you go
+- **"Previous" column**: shows what you lifted last time; tap it to copy the values, or just tick an empty set to reuse them
+- **Rest timer**: starts when you tick a set (off / 60 / 90 / 120 / 150 / 180 s, with −15 / +15 / skip)
+- **Machine and exercise search**: about 110 built-in machines and exercises, suggestions while you type
+  - by name (`che` → Chest Press, Chest Dip …)
+  - by muscle or body area (`back`, `legs`, `abs`)
+  - by German name (`beinpresse`, `latzug`, `butterfly`)
+  - small typos are tolerated, and exercises you use often move to the top
+  - filter chips for muscle and equipment
+- **Custom exercises** for machines that are missing
+- **Routines**: build "Push Day" once and start it with one tap, or save a finished workout as a routine
+- **History** of finished workouts with duration, volume and sets
+- **Personal records** per exercise (heaviest set, estimated 1RM, best session volume) and a trophy on sets that beat your previous best weight
 
-   ```bash
-   npm install
-   ```
+## Run it on your phone
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+You need [Node.js](https://nodejs.org) (20 or newer) on your computer and the **Expo Go** app on your phone.
 
 ```bash
-npm run reset-project
+git clone https://github.com/Mark-Stessl/ironlog.git
+cd ironlog
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Scan the QR code with Expo Go (Android) or the camera app (iPhone). Phone and computer must be on the same Wi-Fi.
 
-### Other setup steps
+If Expo Go says the project needs a newer SDK than it supports, update Expo Go, or create a development build with `npx expo run:android`.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Project layout
 
-## Learn more
+```
+src/app/                 screens (Expo Router, one file per screen)
+  (tabs)/index.tsx       Workout tab: start a workout, routines
+  (tabs)/history.tsx     finished workouts
+  (tabs)/exercises.tsx   exercise library with search
+  workout/[id].tsx       running workout / summary of a finished one
+  routine/[id].tsx       routine editor
+  exercise/[id].tsx      records and history of one exercise
+  exercise-picker.tsx    "Add Exercise" search
+  exercise-new.tsx       create a custom exercise
+src/lib/db.ts            database schema and all queries
+src/lib/search.ts        search and suggestion ranking
+src/lib/exercise-data.ts built-in machine and exercise list
+tests/logic.test.ts      tests for search and database logic
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Checks
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm run typecheck
+npm test
+```
 
-## Join the community
+## Planned next
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+1. Meals and calories: food search and barcode scanning (Open Food Facts), daily calorie and protein goals
+2. Progress charts per exercise and a workout calendar
+3. Bodyweight log with trend line
+4. Rest timer notification when the app is in the background
+5. Backup and export of the database
