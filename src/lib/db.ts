@@ -227,7 +227,7 @@ export async function getExerciseHistory(db: SQLiteDatabase, exerciseId: number)
      JOIN workout_exercises we ON we.id = s.workout_exercise_id
      JOIN workouts w ON w.id = we.workout_id
      WHERE we.exercise_id = ? AND s.done = 1 AND w.finished_at IS NOT NULL
-     ORDER BY w.finished_at DESC, we.position, s.position`,
+     ORDER BY w.finished_at DESC, w.id DESC, we.position, s.position`,
     exerciseId,
   );
   const sessions: ExerciseSession[] = [];
@@ -321,7 +321,7 @@ async function previousSets(db: SQLiteDatabase, exerciseId: number, excludeWorko
      JOIN workouts w ON w.id = we.workout_id
      WHERE we.exercise_id = ? AND w.finished_at IS NOT NULL AND w.id != ?
        AND EXISTS (SELECT 1 FROM sets s WHERE s.workout_exercise_id = we.id AND s.done = 1)
-     ORDER BY w.finished_at DESC LIMIT 1`,
+     ORDER BY w.finished_at DESC, w.id DESC LIMIT 1`,
     exerciseId,
     excludeWorkoutId,
   );
@@ -477,7 +477,7 @@ export function listFinishedWorkouts(db: SQLiteDatabase): Promise<WorkoutSummary
           WHERE we.workout_id = w.id ORDER BY we.position)) AS exercise_names
     FROM workouts w
     WHERE w.finished_at IS NOT NULL
-    ORDER BY w.finished_at DESC
+    ORDER BY w.finished_at DESC, w.id DESC
   `);
 }
 

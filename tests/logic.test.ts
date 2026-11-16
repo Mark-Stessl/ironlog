@@ -94,7 +94,9 @@ test('format helpers', () => {
   assert.equal(fmtDuration(3_725_000), '1:02:05');
 });
 
-test('database: full workout flow', async () => {
+test('database: full workout flow', async (t) => {
+  // Freeze the clock so both workouts finish in the same millisecond (the hardest case for ordering).
+  t.mock.timers.enable({ apis: ['Date'], now: 1_800_000_000_000 });
   const db = fakeDb();
   await dbm.migrate(db);
   await dbm.migrate(db); // running twice must be harmless
