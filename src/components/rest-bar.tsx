@@ -1,8 +1,8 @@
-import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { fmtDuration } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
 import { C, R, S } from '@/lib/theme';
 
 /** Countdown shown at the bottom of the workout after ticking off a set. */
@@ -29,7 +29,7 @@ export function RestBar({
 
   useEffect(() => {
     if (remaining <= 0) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptic.success();
       onDone();
     }
   }, [remaining, onDone]);

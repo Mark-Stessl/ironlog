@@ -34,6 +34,14 @@ Scan the QR code with Expo Go (Android) or the camera app (iPhone). Phone and co
 
 If Expo Go says the project needs a newer SDK than it supports, update Expo Go, or create a development build with `npx expo run:android`.
 
+## Run it in the browser
+
+```bash
+npm run web
+```
+
+The web version uses the same code and keeps its data in the browser, separate from the phone app. Every push to `main` also builds it and publishes it to GitHub Pages (see `.github/workflows/deploy-web.yml`).
+
 ## Project layout
 
 ```

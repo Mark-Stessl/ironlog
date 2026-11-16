@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ComponentProps, ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { C, R, S } from '@/lib/theme';
 
@@ -82,7 +82,7 @@ export function HeaderButton({
       hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel={label ?? icon}
-      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4 })}>
+      style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 4, marginRight: Platform.OS === 'web' ? 12 : 0 })}>
       {icon ? <Ionicons name={icon} size={22} color={color} /> : null}
       {label && !icon ? <Text style={{ color, fontSize: 16, fontWeight: '700' }}>{label}</Text> : null}
     </Pressable>

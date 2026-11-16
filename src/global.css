@@ -1,0 +1,9 @@
+/* Web only: hide the browser's focus ring inside text fields (they have their own border). */
+input:focus,
+textarea:focus {
+  outline: none;
+}
+html,
+body {
+  background: #07080a;
+}

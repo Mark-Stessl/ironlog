@@ -1,11 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import * as Haptics from 'expo-haptics';
 import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Elapsed } from '@/components/elapsed';
@@ -28,7 +27,9 @@ import {
   type WorkoutDetail,
   type WorkoutExercise,
 } from '@/lib/db';
+import { confirm, notify } from '@/lib/dialog';
 import { fmtDate, fmtDurationShort, fmtSet, fmtVolume, fmtWeight, parseNum } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
 import { C, R, S } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -92,7 +93,7 @@ function ActiveWorkout({
       ),
     });
     if (patch.done && !set.done) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      haptic.tap();
       if (restSeconds > 0) setRest({ endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000 });
     }
   };
@@ -100,42 +101,35 @@ function ActiveWorkout({
   const doneSets = exercises.flatMap((e) => e.sets).filter((s) => s.done);
   const volume = doneSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
 
-  const finish = () => {
+  const finish = async () => {
     if (doneSets.length === 0) {
-      Alert.alert('Nothing logged yet', 'Tick off at least one set, or discard the workout.');
+      notify('Nothing logged yet', 'Tick off at least one set, or discard the workout.');
       return;
     }
     const open = exercises.flatMap((e) => e.sets).length - doneSets.length;
-    Alert.alert(
-      'Finish workout?',
-      open > 0 ? `${open} unticked ${open === 1 ? 'set' : 'sets'} will be removed.` : undefined,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Finish',
-          onPress: async () => {
-            await renameWorkout(db, workout.id, name);
-            await finishWorkout(db, workout.id);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            await reload();
-          },
-        },
-      ],
-    );
+    const ok = await confirm({
+      title: 'Finish workout?',
+      message: open > 0 ? `${open} unticked ${open === 1 ? 'set' : 'sets'} will be removed.` : undefined,
+      confirmLabel: 'Finish',
+    });
+    if (!ok) return;
+    await renameWorkout(db, workout.id, name);
+    await finishWorkout(db, workout.id);
+    haptic.success();
+    setRest(null);
+    await reload();
   };
 
-  const discard = () => {
-    Alert.alert('Discard workout?', 'Everything logged in this workout will be deleted.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteWorkout(db, workout.id);
-          router.back();
-        },
-      },
-    ]);
+  const discard = async () => {
+    const ok = await confirm({
+      title: 'Discard workout?',
+      message: 'Everything logged in this workout will be deleted.',
+      confirmLabel: 'Discard',
+      destructive: true,
+    });
+    if (!ok) return;
+    await deleteWorkout(db, workout.id);
+    router.back();
   };
 
   return (
@@ -191,19 +185,17 @@ function ActiveWorkout({
               await deleteSet(db, setId);
               await reload();
             }}
-            onRemove={() =>
-              Alert.alert(`Remove ${ex.name}?`, 'Its sets in this workout will be deleted.', [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Remove',
-                  style: 'destructive',
-                  onPress: async () => {
-                    await removeWorkoutExercise(db, ex.id);
-                    await reload();
-                  },
-                },
-              ])
-            }
+            onRemove={async () => {
+              const ok = await confirm({
+                title: `Remove ${ex.name}?`,
+                message: 'Its sets in this workout will be deleted.',
+                confirmLabel: 'Remove',
+                destructive: true,
+              });
+              if (!ok) return;
+              await removeWorkoutExercise(db, ex.id);
+              await reload();
+            }}
           />
         ))}
 
@@ -268,8 +260,8 @@ function ExerciseCard({
       </View>
 
       <View style={styles.setRow}>
-        <Text style={[styles.colHead, styles.colNum]}>Set</Text>
-        <Text style={[styles.colHead, styles.colPrev]}>Previous</Text>
+        <Text style={[styles.colHead, { width: 32 }]}>Set</Text>
+        <Text style={[styles.colHead, { flex: 1 }]}>Previous</Text>
         <Text style={[styles.colHead, styles.colInput]}>kg</Text>
         <Text style={[styles.colHead, styles.colInput]}>Reps</Text>
         <View style={styles.colCheck} />
@@ -330,7 +322,7 @@ function SetLine({
     const weight = parseNum(weightText) ?? prev?.weight ?? null;
     const reps = parseNum(repsText) ?? prev?.reps ?? null;
     if (reps == null || reps === 0) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      haptic.warning();
       return;
     }
     setWeightText(fmtWeight(weight));
@@ -402,18 +394,16 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
   const volume = sets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
   const end = workout.finished_at ?? workout.started_at;
 
-  const remove = () => {
-    Alert.alert('Delete workout?', 'This also removes it from your records.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteWorkout(db, workout.id);
-          router.back();
-        },
-      },
-    ]);
+  const remove = async () => {
+    const ok = await confirm({
+      title: 'Delete workout?',
+      message: 'This also removes it from your records.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    await deleteWorkout(db, workout.id);
+    router.back();
   };
 
   const saveRoutine = async () => {

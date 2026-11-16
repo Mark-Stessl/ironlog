@@ -3,7 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Card, Empty, HeaderButton, text } from '@/components/ui';
 import {
@@ -17,6 +17,7 @@ import {
   type Routine,
   type RoutineExercise,
 } from '@/lib/db';
+import { confirm, notify } from '@/lib/dialog';
 import { C, R, S } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -42,25 +43,23 @@ function RoutineEditor({
   const db = useSQLiteContext();
   const [name, setName] = useState(routine.name);
 
-  const remove = () => {
-    Alert.alert(`Delete "${name}"?`, 'Workouts you already logged with it are kept.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteRoutine(db, routine.id);
-          router.back();
-        },
-      },
-    ]);
+  const remove = async () => {
+    const ok = await confirm({
+      title: `Delete "${name}"?`,
+      message: 'Workouts you already logged with it are kept.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!ok) return;
+    await deleteRoutine(db, routine.id);
+    router.back();
   };
 
   const start = async () => {
     await renameRoutine(db, routine.id, name);
     const active = await getActiveWorkout(db);
     if (active) {
-      Alert.alert('Workout in progress', `Finish or discard "${active.name}" first.`);
+      notify('Workout in progress', `Finish or discard "${active.name}" first.`);
       return;
     }
     const workoutId = await startWorkout(db, routine.id);

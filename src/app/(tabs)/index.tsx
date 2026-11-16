@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Elapsed } from '@/components/elapsed';
 import { Button, Card, Empty, text } from '@/components/ui';
+import { confirm } from '@/lib/dialog';
 import { createRoutine, getActiveWorkout, listRoutines, startWorkout } from '@/lib/db';
 import { C, S } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
@@ -22,10 +23,12 @@ export default function WorkoutTab() {
 
   const start = async (routineId?: number) => {
     if (active) {
-      Alert.alert('Workout in progress', `Finish or discard "${active.name}" before starting a new one.`, [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Resume', onPress: () => open(active.id) },
-      ]);
+      const resume = await confirm({
+        title: 'Workout in progress',
+        message: `Finish or discard "${active.name}" before starting a new one. Resume it now?`,
+        confirmLabel: 'Resume',
+      });
+      if (resume) open(active.id);
       return;
     }
     open(await startWorkout(db, routineId));
