@@ -140,8 +140,8 @@ export function periodRange(period: Period, now = new Date()): { from: number; t
     const from = d.getTime();
     const prev = new Date(d);
     prev.setMonth(prev.getMonth() - 1);
-    const label = d.toLocaleDateString(undefined, { month: 'long' });
-    const prevLabel = prev.toLocaleDateString(undefined, { month: 'long' });
+    const label = d.toLocaleDateString('en-US', { month: 'long' });
+    const prevLabel = prev.toLocaleDateString('en-US', { month: 'long' });
     return { from, to: now.getTime(), prevFrom: prev.getTime(), label, prevLabel };
   }
   d.setMonth(0, 1);
