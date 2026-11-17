@@ -9,7 +9,7 @@ const SOURCES = {
   complete: require('../../assets/sounds/complete.wav'),
 };
 
-const VOLUME: Record<SoundName, number> = { tick: 0.5, record: 0.9, rest: 0.85, complete: 0.85 };
+const VOLUME: Record<SoundName, number> = { tick: 0.45, record: 0.8, rest: 0.8, complete: 0.75 };
 
 export type SoundName = keyof typeof SOURCES;
 
