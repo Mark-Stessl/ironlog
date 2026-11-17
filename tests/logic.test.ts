@@ -341,3 +341,50 @@ test('body map: detailed muscles for built-in exercises, groups for custom ones'
   assert.deepEqual(custom.secondary, ['biceps']);
   assert.deepEqual(custom.secondaryLabels, ['Biceps']);
 });
+
+test('muscle stats: sets per group and area, primary 1 and secondary 0.5', async () => {
+  const { muscleStats, heat, topRegions, periodRange } = await import('../src/lib/stats');
+  const set = (name: string, muscle: string, workout_id = 1, secondary = '') => ({ name, muscle, secondary, weight: 50, reps: 10, workout_id });
+  const st = muscleStats([
+    set('Lat Pulldown', 'Back'), // lats 1; biceps, rear delts, upper back 0.5
+    set('Lat Pulldown', 'Back'),
+    set('Chest Press (Machine)', 'Chest', 2),
+    set('My Row', 'Back', 2, 'Biceps'), // custom: back areas 1, biceps 0.5
+  ]);
+  assert.equal(st.sets, 4);
+  assert.equal(st.workouts, 2);
+  assert.equal(st.volume, 2000);
+  assert.equal(st.groups.Back, 3, 'back counted once per set even though several back areas are hit');
+  assert.equal(st.groups.Arms, 2, 'biceps 0.5 + 0.5 + 0.5 (rows) and triceps 0.5 (chest press)');
+  assert.equal(st.groups.Legs, 0);
+  assert.equal(st.regions.lats, 3);
+  assert.equal(st.regions.biceps, 1.5);
+  assert.equal(heat(st.regions).lats, 1);
+  assert.equal(topRegions(st.regions, 1)[0].region, 'lats');
+  assert.deepEqual(heat({}), {});
+
+  const r = periodRange('month', new Date(2026, 10, 18, 15, 0));
+  assert.equal(new Date(r.from).getDate(), 1);
+  assert.equal(new Date(r.prevFrom).getMonth(), 9);
+  const w = periodRange('week', new Date(2026, 10, 18, 15, 0)); // a Wednesday
+  assert.equal(new Date(w.from).getDay(), 1);
+});
+
+test('database: stat sets for a period and a single workout', async () => {
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const lp = (await dbm.listExercises(db)).find((e) => e.name === 'Leg Press')!;
+  const w = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, w, lp.id);
+  let d = (await dbm.getWorkoutDetail(db, w))!;
+  await dbm.updateSet(db, d.exercises[0].sets[0].id, { weight: 100, reps: 10, done: true });
+  await dbm.addSet(db, d.exercises[0].id); // left unticked
+  await dbm.finishWorkout(db, w);
+  const sets = await dbm.statSets(db, 0, Date.now() + 1000);
+  assert.equal(sets.length, 1);
+  assert.equal(sets[0].name, 'Leg Press');
+  assert.equal((await dbm.statSets(db, 0, Date.now() + 1000, w)).length, 1);
+  assert.equal((await dbm.statSets(db, 0, Date.now() + 1000, w + 99)).length, 0);
+  assert.equal((await dbm.statSets(db, Date.now() + 5000, Date.now() + 9000)).length, 0);
+  assert.ok((await dbm.trainingTime(db, 0, Date.now() + 1000)) >= 0);
+});

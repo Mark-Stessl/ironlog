@@ -9,6 +9,7 @@ export function SettingsLoader() {
   const db = useSQLiteContext();
   useEffect(() => {
     getSetting(db, 'sound', '1').then((v) => sound.setEnabled(v === '1'));
+    getSetting(db, 'sound_volume', '0.7').then((v) => sound.setVolume(Number(v)));
   }, [db]);
   return null;
 }

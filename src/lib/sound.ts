@@ -3,18 +3,18 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 
 const SOURCES = {
-  tick: require('../../assets/sounds/tick.wav'),
   record: require('../../assets/sounds/record.wav'),
   rest: require('../../assets/sounds/rest.wav'),
   complete: require('../../assets/sounds/complete.wav'),
 };
 
-const VOLUME: Record<SoundName, number> = { tick: 0.45, record: 0.8, rest: 0.8, complete: 0.75 };
+const VOLUME: Record<SoundName, number> = { record: 0.85, rest: 0.85, complete: 0.8 };
 
 export type SoundName = keyof typeof SOURCES;
 
 const players: Partial<Record<SoundName, AudioPlayer>> = {};
 let enabled = true;
+let volume = 0.7; // 0..1, the user's sound-effects volume
 let modeSet = false;
 const listeners = new Set<(on: boolean) => void>();
 
@@ -29,7 +29,8 @@ export const sound = {
         );
       }
       const player = (players[name] ??= createAudioPlayer(SOURCES[name]));
-      player.volume = VOLUME[name];
+      // Squared so the slider feels even: half way sounds about half as loud.
+      player.volume = VOLUME[name] * volume * volume;
       player.seekTo(0).catch(() => {});
       player.play();
     } catch {
@@ -37,6 +38,10 @@ export const sound = {
     }
   },
   isEnabled: () => enabled,
+  getVolume: () => volume,
+  setVolume(v: number) {
+    volume = Math.min(1, Math.max(0, v));
+  },
   setEnabled(on: boolean) {
     enabled = on;
     listeners.forEach((fn) => fn(on));

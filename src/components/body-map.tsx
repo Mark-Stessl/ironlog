@@ -12,17 +12,37 @@ const PRIMARY = C.accent;
 const SECONDARY = 'rgba(34,211,238,0.38)';
 
 /** Front and back figure with the worked muscles highlighted, plus a legend. */
-export function BodyMap({ muscles, height = 220, legend = true }: { muscles: MuscleMap; height?: number; legend?: boolean }) {
-  const primary = new Set<Region>(muscles.primary);
-  const secondary = new Set<Region>(muscles.secondary);
-  const fill = (r: string) => (primary.has(r as Region) ? PRIMARY : secondary.has(r as Region) ? SECONDARY : IDLE);
+export function BodyMap({
+  muscles,
+  heat,
+  height = 220,
+  legend = true,
+}: {
+  /** Highlight primary / secondary muscles of one exercise. */
+  muscles?: MuscleMap;
+  /** Or shade areas by how much they were trained (0..1). */
+  heat?: Partial<Record<Region, number>>;
+  height?: number;
+  legend?: boolean;
+}) {
+  const primary = new Set<Region>(muscles?.primary ?? []);
+  const secondary = new Set<Region>(muscles?.secondary ?? []);
+  const fill = (r: string) => {
+    if (heat) {
+      const v = heat[r as Region] ?? 0;
+      return v > 0 ? `rgba(34,211,238,${(0.2 + 0.8 * v).toFixed(2)})` : IDLE;
+    }
+    return primary.has(r as Region) ? PRIMARY : secondary.has(r as Region) ? SECONDARY : IDLE;
+  };
   // Crop to the figures (they span x 19–231, y 8–262 of the 250 × 270 drawing).
   const width = (height * 220) / 260;
 
   const figure = (f: Figure, x: number) => {
     const shapes = (set: Figure['half']) =>
       Object.entries(set).flatMap(([region, paths]) =>
-        (paths ?? []).map((d, i) => <Path key={`${region}${i}`} d={d} fill={fill(region)} stroke={C.bg} strokeWidth={0.6} />),
+        (paths ?? []).map((d, i) => (
+          <Path key={`${region}${i}`} d={d} fill={fill(region)} stroke={C.bg} strokeWidth={0.6} />
+        )),
       );
     const half = (
       <>
@@ -43,7 +63,11 @@ export function BodyMap({ muscles, height = 220, legend = true }: { muscles: Mus
   return (
     <View style={{ gap: S.md }}>
       <View style={{ alignItems: 'center' }}>
-        <Svg width={width} height={height} viewBox="15 6 220 260" accessibilityLabel={describe(muscles)}>
+        <Svg
+          width={width}
+          height={height}
+          viewBox="15 6 220 260"
+          accessibilityLabel={muscles ? describe(muscles) : 'Body map of trained muscles'}>
           {figure(FRONT, 0)}
           {figure(BACK, 130)}
         </Svg>
@@ -52,7 +76,16 @@ export function BodyMap({ muscles, height = 220, legend = true }: { muscles: Mus
           <Text style={styles.caption}>Back</Text>
         </View>
       </View>
-      {legend ? (
+      {heat && legend ? (
+        <View style={styles.scale}>
+          <Text style={text.faint}>Less</Text>
+          {[0.2, 0.4, 0.6, 0.8, 1].map((v) => (
+            <View key={v} style={[styles.scaleStep, { backgroundColor: `rgba(34,211,238,${v})` }]} />
+          ))}
+          <Text style={text.faint}>More</Text>
+        </View>
+      ) : null}
+      {muscles && legend ? (
         <View style={{ gap: 6 }}>
           {muscles.primaryLabels.length ? (
             <LegendRow color={PRIMARY} title="Primary" names={muscles.primaryLabels} />
@@ -88,4 +121,6 @@ const styles = StyleSheet.create({
   caption: { color: C.textFaint, fontFamily: F.medium, fontSize: 11 },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
   dot: { width: 10, height: 10, borderRadius: 3 },
+  scale: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  scaleStep: { width: 18, height: 8, borderRadius: 2 },
 });

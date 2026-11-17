@@ -4,6 +4,7 @@ import { SEED_EXERCISES } from './exercise-data';
 import { defaultWorkoutName, est1RM } from './format';
 import { addToBest, NO_BEST, type Best } from './records';
 import type { PlanItem } from './routine-diff';
+import type { StatSet } from './stats';
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ export type WorkoutExercise = {
   name: string;
   muscle: string;
   equipment: string;
+  secondary: string;
   sets: SetRow[];
   previous: PrevSet[]; // sets from the last finished session of this exercise
   best: Best; // records from workouts before this one
@@ -366,7 +368,7 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number): P
   const workout = await db.getFirstAsync<Workout>('SELECT * FROM workouts WHERE id = ?', workoutId);
   if (!workout) return null;
   const rows = await db.getAllAsync<Omit<WorkoutExercise, 'sets' | 'previous' | 'best'>>(
-    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment
+    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment, e.secondary
      FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
      WHERE we.workout_id = ? ORDER BY we.position`,
     workoutId,
@@ -490,6 +492,33 @@ export async function workoutNumber(db: SQLiteDatabase, workout: Workout): Promi
     workout.id,
   );
   return row?.n ?? 1;
+}
+
+/** Completed sets of finished workouts between two times (for statistics). */
+export function statSets(db: SQLiteDatabase, from: number, to: number, workoutId?: number): Promise<StatSet[]> {
+  return db.getAllAsync<StatSet>(
+    `SELECT e.name, e.muscle, e.secondary, s.weight, s.reps, w.id AS workout_id
+     FROM sets s
+     JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN workouts w ON w.id = we.workout_id
+     JOIN exercises e ON e.id = we.exercise_id
+     WHERE s.done = 1 AND w.finished_at IS NOT NULL AND w.finished_at >= ? AND w.finished_at < ?
+       AND (? IS NULL OR w.id = ?)`,
+    from,
+    to,
+    workoutId ?? null,
+    workoutId ?? null,
+  );
+}
+
+/** Total training time of finished workouts in a time range. */
+export async function trainingTime(db: SQLiteDatabase, from: number, to: number): Promise<number> {
+  const row = await db.getFirstAsync<{ ms: number | null }>(
+    'SELECT SUM(finished_at - started_at) AS ms FROM workouts WHERE finished_at IS NOT NULL AND finished_at >= ? AND finished_at < ?',
+    from,
+    to,
+  );
+  return row?.ms ?? 0;
 }
 
 export async function deleteWorkout(db: SQLiteDatabase, workoutId: number): Promise<void> {

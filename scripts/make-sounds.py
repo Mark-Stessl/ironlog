@@ -69,32 +69,30 @@ def save(name, sig, peak):
         w.writeframes(data.tobytes())
 
 
-# Set ticked: a soft, low "pop", like a muted marimba note.
-total = 0.35
-buf = np.zeros(int(total * RATE))
-place(buf, tone(hz(72), 0.3, attack=0.006, decay=22, partials=((1, 1.0), (4, 0.05)), glide=0.06), 0)
-save('tick', reverb(lowpass(buf, 2400), length=0.3, mix=0.12), peak=0.35)
+# All sounds: low-ish pitches, almost pure sine tones, slow-ish fade-in, dark low-pass
+# and a soft room, so they feel round and calm rather than "beepy".
+SOFT = ((1, 1.0), (2, 0.06))
 
-# New record: a calm rising arpeggio (C major) landing on a soft chord.
-total = 2.2
-buf = np.zeros(int(total * RATE))
-for i, m in enumerate([72, 76, 79, 84]):  # C5 E5 G5 C6
-    place(buf, tone(hz(m), total - i * 0.11, attack=0.02, decay=2.2, partials=((1, 1.0), (2, 0.12))), i * 0.11)
-place(buf, tone(hz(91), 1.4, attack=0.05, decay=3.0, partials=((1, 0.25),)), 0.42)  # airy G6 on top
-save('record', reverb(lowpass(buf, 4000), length=1.4, mix=0.28), peak=0.6)
-
-# Rest over: two gentle notes, a fourth apart (like a soft doorbell).
-total = 1.6
-buf = np.zeros(int(total * RATE))
-place(buf, tone(hz(76), 1.5, attack=0.015, decay=2.6, partials=((1, 1.0), (2, 0.1))), 0)
-place(buf, tone(hz(81), 1.3, attack=0.015, decay=2.4, partials=((1, 1.0), (2, 0.1))), 0.22)
-save('rest', reverb(lowpass(buf, 3500), length=1.2, mix=0.25), peak=0.6)
-
-# Workout complete: a warm chord that blooms in, with a soft top note.
+# New record: a calm rising G major arpeggio that settles into a warm chord.
 total = 2.6
 buf = np.zeros(int(total * RATE))
-for k, m in enumerate([60, 64, 67, 72]):  # C4 E4 G4 C5
-    place(buf, tone(hz(m), total - 0.03 * k, attack=0.06, decay=1.4, partials=((1, 1.0), (2, 0.15))), 0.03 * k)
-place(buf, tone(hz(79), 2.0, attack=0.08, decay=1.8, partials=((1, 0.45),)), 0.32)
-save('complete', reverb(lowpass(buf, 3200), length=1.6, mix=0.3), peak=0.6)
+for i, m in enumerate([67, 71, 74, 79]):  # G4 B4 D5 G5
+    place(buf, tone(hz(m), total - i * 0.13, attack=0.035, decay=1.7, partials=SOFT), i * 0.13)
+place(buf, tone(hz(86), 1.6, attack=0.12, decay=2.2, partials=((1, 0.18),)), 0.5)  # faint D6 shimmer
+save('record', reverb(lowpass(buf, 2600), length=1.8, mix=0.34, tone_hz=2200), peak=0.55)
+
+# Rest over: two soft notes going up a fourth.
+total = 1.9
+buf = np.zeros(int(total * RATE))
+place(buf, tone(hz(72), 1.8, attack=0.03, decay=2.1, partials=SOFT), 0)
+place(buf, tone(hz(77), 1.6, attack=0.03, decay=2.0, partials=SOFT), 0.26)
+save('rest', reverb(lowpass(buf, 2400), length=1.5, mix=0.32, tone_hz=2200), peak=0.55)
+
+# Workout complete: a warm chord that blooms in slowly, with a soft top note.
+total = 3.0
+buf = np.zeros(int(total * RATE))
+for k, m in enumerate([55, 60, 64, 67]):  # G3 C4 E4 G4
+    place(buf, tone(hz(m), total - 0.05 * k, attack=0.14, decay=1.1, partials=SOFT), 0.05 * k)
+place(buf, tone(hz(72), 2.4, attack=0.16, decay=1.4, partials=((1, 0.4),)), 0.38)
+save('complete', reverb(lowpass(buf, 2200), length=2.0, mix=0.36, tone_hz=2000), peak=0.55)
 print('sounds written')

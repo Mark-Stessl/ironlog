@@ -21,7 +21,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCelebrate } from '@/components/celebrate';
 import { Confetti } from '@/components/confetti';
 import { CountUp } from '@/components/count-up';
+import { BodyMap } from '@/components/body-map';
 import { Bump } from '@/components/bump';
+import { MuscleBars } from '@/components/muscle-bars';
 import { Elapsed } from '@/components/elapsed';
 import { SoundToggle } from '@/components/sound-toggle';
 import { ExerciseImage } from '@/components/exercise-image';
@@ -72,6 +74,7 @@ import { fmtDate, fmtDurationShort, fmtSet, fmtVolume, fmtWeight, parseNum, plur
 import { haptic } from '@/lib/haptics';
 import { currentPRs, markPRs, PR_LABEL, type PR } from '@/lib/records';
 import { sound } from '@/lib/sound';
+import { heat, muscleStats } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -223,7 +226,12 @@ function ActiveWorkout({
     const plan = routine.exercises.map((e) => ({ exercise_id: e.exercise_id, name: e.name, sets: e.target_sets }));
     const diff = diffRoutine(plan, await workoutPlan(db, workout.id));
     if (!hasChanges(diff)) return;
-    const icons = { added: 'add-circle-outline', removed: 'remove-circle-outline', sets: 'layers-outline', order: 'swap-vertical-outline' } as const;
+    const icons = {
+      added: 'add-circle-outline',
+      removed: 'remove-circle-outline',
+      sets: 'layers-outline',
+      order: 'swap-vertical-outline',
+    } as const;
     const choice = await choose({
       title: 'Update your routine?',
       message: `This workout was different from "${routine.routine.name}".`,
@@ -364,12 +372,28 @@ function ActiveWorkout({
           <View style={{ flex: desktop ? 1 : undefined, minWidth: 0 }}>
             <Text style={text.strong}>Done for today?</Text>
             <Text style={text.faint}>
-              {doneSets.length ? `${plural(doneSets.length, 'set')} · ${fmtVolume(volume)}` : 'Tick off a set to finish.'}
+              {doneSets.length
+                ? `${plural(doneSets.length, 'set')} · ${fmtVolume(volume)}`
+                : 'Tick off a set to finish.'}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', gap: S.sm }}>
-            <Button label="Discard" icon="trash-outline" kind="danger" small onPress={discard} style={!desktop && { flex: 1 }} />
-            <Button label="Finish workout" icon="flag-outline" kind="primary" small onPress={finish} style={!desktop && { flex: 2 }} />
+            <Button
+              label="Discard"
+              icon="trash-outline"
+              kind="danger"
+              small
+              onPress={discard}
+              style={!desktop && { flex: 1 }}
+            />
+            <Button
+              label="Finish workout"
+              icon="flag-outline"
+              kind="primary"
+              small
+              onPress={finish}
+              style={!desktop && { flex: 2 }}
+            />
           </View>
         </View>
       </ScrollView>
@@ -658,6 +682,20 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
     currentPRs(ex.sets, ex.best).flatMap((prs, i) => (prs.length ? [{ ex, prs, set: ex.sets[i], index: i }] : [])),
   );
   const recordCount = records.reduce((n, r) => n + r.prs.length, 0);
+
+  // Everything this workout trained, for the body heatmap.
+  const trained = muscleStats(
+    exercises.flatMap((ex) =>
+      ex.sets.map((s) => ({
+        name: ex.name,
+        muscle: ex.muscle,
+        secondary: ex.secondary,
+        weight: s.weight,
+        reps: s.reps,
+        workout_id: workout.id,
+      })),
+    ),
+  );
   const prSetIds = new Set(records.map((r) => r.set.id));
 
   useEffect(() => {
@@ -732,6 +770,16 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
           <StatCard icon="layers-outline" label="Sets">
             <CountUp value={sets.length} delay={justFinished ? 450 : 0} style={styles.statBig} />
           </StatCard>
+        </Animated.View>
+
+        <SectionTitle title="Muscles trained" />
+        <Animated.View entering={FadeInDown.delay(justFinished ? 450 : 0).duration(350)}>
+          <Card style={[styles.musclesCard, desktop && { flexDirection: 'row', alignItems: 'center' }]}>
+            <BodyMap heat={heat(trained.regions)} height={desktop ? 260 : 230} />
+            <View style={{ flex: desktop ? 1 : undefined, gap: S.md }}>
+              <MuscleBars regions={trained.regions} />
+            </View>
+          </Card>
         </Animated.View>
 
         {records.length ? (
@@ -846,6 +894,7 @@ const styles = StyleSheet.create({
     marginBottom: S.sm,
   },
   statCards: { flexDirection: 'row', gap: S.sm },
+  musclesCard: { gap: S.lg, paddingVertical: S.lg },
   statCard: {
     flex: 1,
     gap: 4,
