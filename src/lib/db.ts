@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { SEED_EXERCISES } from './exercise-data';
 import { defaultWorkoutName, est1RM } from './format';
 import { addToBest, NO_BEST, type Best } from './records';
+import type { PlanItem } from './routine-diff';
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -573,14 +574,49 @@ export async function removeRoutineExercise(db: SQLiteDatabase, routineExerciseI
   await db.runAsync('DELETE FROM routine_exercises WHERE id = ?', routineExerciseId);
 }
 
+/** Exercises and set counts of a workout, in order (what you actually did). */
+export function workoutPlan(db: SQLiteDatabase, workoutId: number): Promise<PlanItem[]> {
+  return db.getAllAsync<PlanItem>(
+    `SELECT we.exercise_id, e.name,
+       (SELECT COUNT(*) FROM sets s WHERE s.workout_exercise_id = we.id) AS sets
+     FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
+     WHERE we.workout_id = ? ORDER BY we.position`,
+    workoutId,
+  );
+}
+
+/** Replaces a routine's exercises with what you did in a workout (keeps its name). */
+export async function updateRoutineFromWorkout(db: SQLiteDatabase, routineId: number, workoutId: number): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM routine_exercises WHERE routine_id = ?', routineId);
+    await db.runAsync(
+      `INSERT INTO routine_exercises (routine_id, exercise_id, position, target_sets)
+       SELECT ?, we.exercise_id, we.position,
+         MAX(1, (SELECT COUNT(*) FROM sets s WHERE s.workout_exercise_id = we.id))
+       FROM workout_exercises we WHERE we.workout_id = ? ORDER BY we.position`,
+      routineId,
+      workoutId,
+    );
+  });
+}
+
+/** "Push day" -> "Push day 2" (or 3, ...) if the name is taken. */
+export async function freeRoutineName(db: SQLiteDatabase, base: string): Promise<string> {
+  const taken = new Set(
+    (await db.getAllAsync<{ name: string }>('SELECT name FROM routines')).map((r) => r.name.toLowerCase()),
+  );
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let n = 2; ; n++) if (!taken.has(`${base} ${n}`.toLowerCase())) return `${base} ${n}`;
+}
+
 /** Turns a finished workout into a reusable routine. Returns the routine id. */
-export async function saveWorkoutAsRoutine(db: SQLiteDatabase, workoutId: number): Promise<number> {
+export async function saveWorkoutAsRoutine(db: SQLiteDatabase, workoutId: number, name?: string): Promise<number> {
   let routineId = 0;
   await db.withTransactionAsync(async () => {
     const w = await db.getFirstAsync<Workout>('SELECT * FROM workouts WHERE id = ?', workoutId);
     const res = await db.runAsync(
       'INSERT INTO routines (name, created_at) VALUES (?, ?)',
-      w?.name ?? 'Routine',
+      name ?? w?.name ?? 'Routine',
       Date.now(),
     );
     routineId = res.lastInsertRowId;

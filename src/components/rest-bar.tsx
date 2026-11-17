@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeInDown,
-  FadeOutDown,
   cancelAnimation,
   interpolateColor,
   useAnimatedStyle,
@@ -16,6 +15,7 @@ import Animated, {
 
 import { fmtDuration } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { sound } from '@/lib/sound';
 import { askForReminders, reminderState, scheduleRestReminder, type ReminderState } from '@/lib/rest-reminder';
 import { C, F, R, S } from '@/lib/theme';
 
@@ -86,6 +86,7 @@ export function RestBar({
     if (remaining > 0 || finished.current) return;
     finished.current = true;
     haptic.success();
+    sound.play('rest');
     setGo(true);
     goAnim.value = withTiming(1, { duration: 250 });
     const t = setTimeout(onDone, 1400);
@@ -101,10 +102,7 @@ export function RestBar({
 
   return (
     <View style={[styles.wrap, { bottom: bottomInset + S.md }]} pointerEvents="box-none">
-      <Animated.View
-        entering={FadeInDown.springify().damping(15)}
-        exiting={FadeOutDown.duration(200)}
-        style={[styles.bar, barStyle]}>
+      <Animated.View entering={FadeInDown.springify().damping(15)} style={[styles.bar, barStyle]}>
         <View style={styles.track}>
           <Animated.View style={[styles.fill, fill]} />
         </View>

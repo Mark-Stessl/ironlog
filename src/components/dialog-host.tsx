@@ -1,18 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
 import { Button, text } from '@/components/ui';
 import { registerDialogHost, type DialogOptions } from '@/lib/dialog';
 import { C, F, R, S } from '@/lib/theme';
 
-type Open = DialogOptions & { id: number; resolve: (ok: boolean) => void };
+type Open = DialogOptions & { id: number; resolve: (result: boolean | string) => void };
 
 const TONE = {
   default: { color: C.accent, bg: C.accentDim, border: C.accentLine },
   success: { color: C.good, bg: 'rgba(52,199,123,0.12)', border: 'rgba(52,199,123,0.45)' },
   danger: { color: C.danger, bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.40)' },
+  gold: { color: C.gold, bg: 'rgba(233,190,88,0.12)', border: 'rgba(233,190,88,0.45)' },
 } as const;
 
 /** Shows the cards requested through `confirm()` / `notify()` in lib/dialog. Mount once. */
@@ -24,9 +25,9 @@ export function DialogHost() {
     return registerDialogHost((req) => setOpen({ ...req, id: ++id }));
   }, []);
 
-  const close = (ok: boolean) => {
+  const close = (result: boolean | string) => {
     if (!open) return;
-    open.resolve(ok);
+    open.resolve(result);
     setOpen(null);
   };
 
@@ -35,7 +36,7 @@ export function DialogHost() {
     if (!open || Platform.OS !== 'web') return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close(false);
-      if (e.key === 'Enter') close(true);
+      if (e.key === 'Enter' && !open.choices) close(true);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -47,7 +48,7 @@ export function DialogHost() {
 
   return (
     <View style={StyleSheet.absoluteFill}>
-      <Animated.View entering={FadeIn.duration(150)} exiting={FadeOut.duration(120)} style={StyleSheet.absoluteFill}>
+      <Animated.View entering={FadeIn.duration(150)} style={StyleSheet.absoluteFill}>
         <Pressable
           style={styles.backdrop}
           onPress={() => close(false)}
@@ -63,7 +64,11 @@ export function DialogHost() {
           accessibilityRole="alert"
           accessibilityViewIsModal>
           <View style={[styles.icon, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-            <Ionicons name={open.icon ?? (open.tone === 'danger' ? 'warning-outline' : 'information')} size={20} color={tone.color} />
+            <Ionicons
+              name={open.icon ?? (open.tone === 'danger' ? 'warning-outline' : 'information')}
+              size={20}
+              color={tone.color}
+            />
           </View>
           <Text style={[text.title, { fontSize: 19 }]}>{open.title}</Text>
           {open.message ? <Text style={[text.body, { color: C.textDim }]}>{open.message}</Text> : null}
@@ -79,6 +84,23 @@ export function DialogHost() {
             </View>
           ) : null}
 
+          {open.items?.length ? (
+            <View style={{ gap: 6, marginTop: 2 }}>
+              {open.items.map((item, i) => (
+                <Animated.View
+                  key={i}
+                  entering={FadeIn.delay(80 + i * 70).duration(220)}
+                  style={[styles.item, { borderColor: open.tone === 'gold' ? tone.border : C.border }]}>
+                  <Ionicons name={item.icon ?? 'trophy'} size={15} color={tone.color} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={text.strong}>{item.title}</Text>
+                    {item.detail ? <Text style={text.faint}>{item.detail}</Text> : null}
+                  </View>
+                </Animated.View>
+              ))}
+            </View>
+          ) : null}
+
           {open.note ? (
             <View style={styles.note}>
               <Ionicons name="alert-circle-outline" size={15} color={C.gold} />
@@ -86,21 +108,37 @@ export function DialogHost() {
             </View>
           ) : null}
 
-          <View style={styles.actions}>
-            {!single ? (
-              <Button label={open.cancelLabel!} kind="secondary" onPress={() => close(false)} style={{ flex: 1 }} />
-            ) : null}
-            <Button
-              label={open.confirmLabel}
-              kind="primary"
-              onPress={() => close(true)}
-              style={[
-                { flex: 1 },
-                open.tone === 'danger' && { backgroundColor: C.danger, borderColor: C.danger },
-                open.tone === 'success' && { backgroundColor: C.good, borderColor: C.good },
-              ]}
-            />
-          </View>
+          {open.choices ? (
+            <View style={{ gap: S.sm, marginTop: S.sm }}>
+              {open.choices.map((c) => (
+                <Button
+                  key={c.value}
+                  label={c.label}
+                  icon={c.icon}
+                  kind={c.primary ? 'primary' : 'secondary'}
+                  onPress={() => close(c.value)}
+                />
+              ))}
+              <Button label={open.cancelLabel ?? 'Cancel'} kind="ghost" onPress={() => close(false)} />
+            </View>
+          ) : (
+            <View style={styles.actions}>
+              {!single ? (
+                <Button label={open.cancelLabel!} kind="secondary" onPress={() => close(false)} style={{ flex: 1 }} />
+              ) : null}
+              <Button
+                label={open.confirmLabel}
+                kind="primary"
+                onPress={() => close(true)}
+                style={[
+                  { flex: 1 },
+                  open.tone === 'danger' && { backgroundColor: C.danger, borderColor: C.danger },
+                  open.tone === 'success' && { backgroundColor: C.good, borderColor: C.good },
+                  open.tone === 'gold' && { backgroundColor: C.gold, borderColor: C.gold },
+                ]}
+              />
+            </View>
+          )}
         </Animated.View>
       </View>
     </View>
@@ -149,4 +187,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(233,190,88,0.08)',
   },
   actions: { flexDirection: 'row', gap: S.sm, marginTop: S.sm },
+  item: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: S.md,
+    borderRadius: R.md,
+    borderWidth: 1,
+    backgroundColor: C.bg,
+  },
 });

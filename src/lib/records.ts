@@ -33,50 +33,69 @@ export function addToBest(best: Best, set: LoggedSet): Best {
   return next;
 }
 
+export const PR_LABEL: Record<PRKind, string> = { weight: 'Weight', reps: 'Reps', e1rm: '1RM' };
+
 /**
- * Is this completed set a new record compared to `before`?
+ * Every record this completed set beats compared to `before` (up to three:
+ * heaviest weight, most reps at the top weight, best estimated 1RM).
  * The first time you ever do an exercise is not a record (there is nothing to beat).
  */
-export function findPR(set: LoggedSet, before: Best): PR | null {
+export function findPRs(set: LoggedSet, before: Best): PR[] {
   const w = set.weight ?? 0;
   const r = set.reps ?? 0;
-  if (r <= 0 || before.sessions === 0) return null;
+  if (r <= 0 || before.sessions === 0) return [];
+  const prs: PR[] = [];
 
   if (w > before.weight) {
-    return {
+    prs.push({
       kind: 'weight',
       title: 'Heaviest weight ever',
       detail: `${fmtWeight(w)} kg × ${r}  ·  was ${fmtWeight(before.weight)} kg`,
-    };
-  }
-  if (w === before.weight && r > before.repsAtWeight) {
-    return {
+    });
+  } else if (w === before.weight && r > before.repsAtWeight) {
+    prs.push({
       kind: 'reps',
       title: w > 0 ? `Most reps at ${fmtWeight(w)} kg` : 'Most reps ever',
       detail: `${r} reps  ·  was ${before.repsAtWeight}`,
-    };
+    });
   }
   const e = w > 0 ? est1RM(w, r) : 0;
-  if (e > before.e1rm + 0.05 && before.e1rm > 0) {
-    return {
+  if (before.e1rm > 0 && e > before.e1rm + 0.05) {
+    prs.push({
       kind: 'e1rm',
       title: 'Best estimated 1RM',
       detail: `${fmtWeight(e)} kg  ·  was ${fmtWeight(before.e1rm)} kg`,
-    };
+    });
   }
-  return null;
+  return prs;
+}
+
+/** The most important record of a set (for short labels), or null. */
+export function findPR(set: LoggedSet, before: Best): PR | null {
+  return findPRs(set, before)[0] ?? null;
 }
 
 /**
- * Marks which completed sets of one exercise in a workout were records,
- * checking them in order so each set has to beat everything before it.
+ * Records beaten by each completed set of one exercise in a workout, checking the
+ * sets in order so each set has to beat everything before it (incl. earlier sets).
  */
-export function markPRs<T extends LoggedSet & { done: number }>(sets: T[], base: Best): (PR | null)[] {
+export function markPRs<T extends LoggedSet & { done: number }>(sets: T[], base: Best): PR[][] {
   let best = base;
   return sets.map((s) => {
-    if (!s.done) return null;
-    const pr = findPR(s, best);
+    if (!s.done) return [];
+    const prs = findPRs(s, best);
     best = addToBest(best, s);
-    return pr;
+    return prs;
   });
+}
+
+/**
+ * Like markPRs, but only the newest set holds each record: if a later set beats
+ * the same record again, the earlier set loses it.
+ */
+export function currentPRs<T extends LoggedSet & { done: number }>(sets: T[], base: Best): PR[][] {
+  const all = markPRs(sets, base);
+  const holder: Partial<Record<PRKind, number>> = {};
+  all.forEach((prs, i) => prs.forEach((pr) => (holder[pr.kind] = i)));
+  return all.map((prs, i) => prs.filter((pr) => holder[pr.kind] === i));
 }

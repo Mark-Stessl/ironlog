@@ -213,7 +213,7 @@ test('exercise media: every entry belongs to a built-in exercise and is complete
 });
 
 test('records: weight, rep and 1RM PRs, checked set by set', async () => {
-  const { addToBest, findPR, markPRs, NO_BEST } = await import('../src/lib/records');
+  const { addToBest, findPR, findPRs, markPRs, currentPRs, NO_BEST } = await import('../src/lib/records');
   let base = NO_BEST;
   for (const s of [{ weight: 60, reps: 8 }, { weight: 60, reps: 10 }, { weight: 50, reps: 12 }]) base = addToBest(base, s);
   base = { ...base, sessions: 1 };
@@ -235,12 +235,85 @@ test('records: weight, rep and 1RM PRs, checked set by set', async () => {
   // In one workout each set must beat everything before it, unticked sets never count.
   const flags = markPRs(
     [
-      { weight: 65, reps: 5, done: 1 }, // weight PR
+      { weight: 65, reps: 5, done: 1 }, // weight PR (1RM 75.8 is below 80)
       { weight: 65, reps: 5, done: 1 }, // same again: no PR
       { weight: 65, reps: 6, done: 1 }, // more reps at the new top weight: PR
       { weight: 80, reps: 5, done: 0 }, // not done
     ],
     base,
   );
-  assert.deepEqual(flags.map((f) => f?.kind ?? null), ['weight', null, 'reps', null]);
+  assert.deepEqual(flags.map((f) => f.map((p) => p.kind)), [['weight'], [], ['reps'], []]);
+
+  // One set can beat several records at once.
+  assert.deepEqual(findPRs({ weight: 62.5, reps: 10 }, base).map((p) => p.kind), ['weight', 'e1rm']);
+  assert.deepEqual(findPRs({ weight: 60, reps: 12 }, base).map((p) => p.kind), ['reps', 'e1rm']);
+
+  // Only the newest set keeps a record that was beaten again later in the workout.
+  const sets = [
+    { weight: 65, reps: 5, done: 1 }, // weight + 1RM record
+    { weight: 70, reps: 5, done: 1 }, // beats both again
+    { weight: 70, reps: 3, done: 1 }, // nothing
+  ];
+  assert.deepEqual(currentPRs(sets, base).map((f) => f.map((p) => p.kind)), [[], ['weight', 'e1rm'], []]);
+  const mixed = [
+    { weight: 65, reps: 5, done: 1 }, // weight + 1RM
+    { weight: 65, reps: 8, done: 1 }, // reps at 65 + better 1RM
+  ];
+  assert.deepEqual(currentPRs(mixed, base).map((f) => f.map((p) => p.kind)), [['weight'], ['reps', 'e1rm']]);
+});
+
+test('routine diff: added, removed, set counts, order', async () => {
+  const { diffRoutine, hasChanges, describeDiff } = await import('../src/lib/routine-diff');
+  const plan = [
+    { exercise_id: 1, name: 'Chest Press', sets: 3 },
+    { exercise_id: 2, name: 'Pec Deck', sets: 3 },
+    { exercise_id: 3, name: 'Tricep Pushdown', sets: 3 },
+  ];
+  assert.equal(hasChanges(diffRoutine(plan, plan)), false);
+  const d = diffRoutine(plan, [
+    { exercise_id: 1, name: 'Chest Press', sets: 4 },
+    { exercise_id: 3, name: 'Tricep Pushdown', sets: 3 },
+    { exercise_id: 9, name: 'Lat Pulldown', sets: 2 },
+  ]);
+  assert.deepEqual(d.added, ['Lat Pulldown']);
+  assert.deepEqual(d.removed, ['Pec Deck']);
+  assert.deepEqual(d.sets, [{ name: 'Chest Press', from: 3, to: 4 }]);
+  assert.equal(d.reordered, false);
+  assert.deepEqual(describeDiff(d).map((l) => l.text), ['Added Lat Pulldown', 'Removed Pec Deck', 'Chest Press: 3 → 4 sets']);
+  const swapped = diffRoutine(plan, [plan[1], plan[0], plan[2]]);
+  assert.equal(swapped.reordered, true);
+  assert.equal(hasChanges(swapped), true);
+});
+
+test('database: update a routine from a workout, or save a copy', async () => {
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const all = await dbm.listExercises(db);
+  const a = all.find((e) => e.name === 'Leg Press')!;
+  const b = all.find((e) => e.name === 'Leg Extension')!;
+  const c = all.find((e) => e.name === 'Seated Leg Curl')!;
+  const r = await dbm.createRoutine(db, 'Leg day');
+  await dbm.addExerciseToRoutine(db, r, a.id);
+  await dbm.addExerciseToRoutine(db, r, b.id);
+  const w = await dbm.startWorkout(db, r); // 3 + 3 empty sets
+  let d = (await dbm.getWorkoutDetail(db, w))!;
+  assert.equal(d.workout.routine_id, r);
+  for (const s of d.exercises[0].sets) await dbm.updateSet(db, s.id, { weight: 100, reps: 10, done: true });
+  await dbm.addExerciseToWorkout(db, w, c.id);
+  d = (await dbm.getWorkoutDetail(db, w))!;
+  await dbm.updateSet(db, d.exercises[2].sets[0].id, { weight: 30, reps: 12, done: true });
+  await dbm.finishWorkout(db, w); // Leg Extension had no ticked sets -> dropped
+
+  const plan = await dbm.workoutPlan(db, w);
+  assert.deepEqual(plan.map((p) => [p.name, p.sets]), [['Leg Press', 3], ['Seated Leg Curl', 1]]);
+
+  assert.equal(await dbm.freeRoutineName(db, 'Leg day'), 'Leg day 2');
+  const copy = await dbm.saveWorkoutAsRoutine(db, w, await dbm.freeRoutineName(db, 'Leg day'));
+  assert.equal((await dbm.getRoutine(db, copy))!.routine.name, 'Leg day 2');
+  assert.equal(await dbm.freeRoutineName(db, 'Leg day'), 'Leg day 3');
+
+  await dbm.updateRoutineFromWorkout(db, r, w);
+  const updated = (await dbm.getRoutine(db, r))!;
+  assert.equal(updated.routine.name, 'Leg day');
+  assert.deepEqual(updated.exercises.map((e) => [e.name, e.target_sets]), [['Leg Press', 3], ['Seated Leg Curl', 1]]);
 });

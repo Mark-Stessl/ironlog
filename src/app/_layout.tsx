@@ -11,6 +11,7 @@ import { View } from 'react-native';
 
 import { CelebrationProvider } from '@/components/celebrate';
 import { DialogHost } from '@/components/dialog-host';
+import { SettingsLoader } from '@/components/settings-loader';
 import { Sidebar } from '@/components/sidebar';
 import { migrate } from '@/lib/db';
 import { C, F, useIsDesktop } from '@/lib/theme';
@@ -67,6 +68,7 @@ export default function RootLayout() {
             </View>
           </View>
           <DialogHost />
+          <SettingsLoader />
         </CelebrationProvider>
       </ThemeProvider>
     </SQLiteProvider>

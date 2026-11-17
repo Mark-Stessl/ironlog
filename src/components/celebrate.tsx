@@ -7,14 +7,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Confetti } from '@/components/confetti';
 import { haptic } from '@/lib/haptics';
+import { sound } from '@/lib/sound';
 import type { PR } from '@/lib/records';
 import { C, F, R, S } from '@/lib/theme';
 
-type Celebration = { id: number; exercise: string; pr: PR };
+type Celebration = { id: number; exercise: string; prs: PR[] };
 
-const CelebrateContext = createContext<(exercise: string, pr: PR) => void>(() => {});
+const CelebrateContext = createContext<(exercise: string, prs: PR[]) => void>(() => {});
 
-/** Call `celebrate(exerciseName, pr)` to show the new-record banner and confetti. */
+/** Call `celebrate(exerciseName, records)` to show the new-record banner and confetti. */
 export function useCelebrate() {
   return useContext(CelebrateContext);
 }
@@ -25,19 +26,21 @@ export function CelebrationProvider({ children }: { children: ReactNode }) {
   const nextId = useRef(1);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const celebrate = useCallback((exercise: string, pr: PR) => {
+  const celebrate = useCallback((exercise: string, prs: PR[]) => {
+    if (!prs.length) return;
     haptic.record();
+    sound.play('record');
     if (timer.current) clearTimeout(timer.current);
-    setCurrent({ id: nextId.current++, exercise, pr });
-    timer.current = setTimeout(() => setCurrent(null), 3400);
+    setCurrent({ id: nextId.current++, exercise, prs });
+    timer.current = setTimeout(() => setCurrent(null), 3400 + (prs.length - 1) * 600);
   }, []);
 
   return (
     <CelebrateContext.Provider value={celebrate}>
       {children}
-      {current ? (
-        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-          <Confetti key={`c${current.id}`} originTop="42%" />
+      <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+        {current ? <Confetti key={`c${current.id}`} originTop="42%" /> : null}
+        {current ? (
           <Animated.View
             key={`b${current.id}`}
             entering={FadeInUp.springify().damping(14)}
@@ -55,18 +58,27 @@ export function CelebrationProvider({ children }: { children: ReactNode }) {
                 <Ionicons name="trophy" size={18} color="#2A1E05" />
               </Animated.View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.kicker}>New PR · {current.exercise}</Text>
-                <Text style={styles.title} numberOfLines={1}>
-                  {current.pr.title}
+                <Text style={styles.kicker}>
+                  {current.prs.length > 1 ? `${current.prs.length} new records` : 'New PR'} · {current.exercise}
                 </Text>
-                <Text style={styles.detail} numberOfLines={1}>
-                  {current.pr.detail}
-                </Text>
+                {current.prs.map((pr, i) => (
+                  <Animated.View
+                    key={pr.kind}
+                    entering={FadeInUp.delay(i * 140).duration(260)}
+                    style={i > 0 && styles.more}>
+                    <Text style={i === 0 ? styles.title : styles.titleSmall} numberOfLines={1}>
+                      {pr.title}
+                    </Text>
+                    <Text style={styles.detail} numberOfLines={1}>
+                      {pr.detail}
+                    </Text>
+                  </Animated.View>
+                ))}
               </View>
             </View>
           </Animated.View>
-        </View>
-      ) : null}
+        ) : null}
+      </View>
     </CelebrateContext.Provider>
   );
 }
@@ -96,5 +108,7 @@ const styles = StyleSheet.create({
   },
   kicker: { color: C.gold, fontFamily: F.semi, fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' },
   title: { color: C.text, fontFamily: F.display, fontSize: 17, letterSpacing: -0.3, marginTop: 1 },
+  titleSmall: { color: C.text, fontFamily: F.semi, fontSize: 13 },
+  more: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(233,190,88,0.18)' },
   detail: { color: C.textDim, fontFamily: F.medium, fontSize: 12, marginTop: 1, fontVariant: ['tabular-nums'] },
 });

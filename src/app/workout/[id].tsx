@@ -23,6 +23,7 @@ import { Confetti } from '@/components/confetti';
 import { CountUp } from '@/components/count-up';
 import { Bump } from '@/components/bump';
 import { Elapsed } from '@/components/elapsed';
+import { SoundToggle } from '@/components/sound-toggle';
 import { ExerciseImage } from '@/components/exercise-image';
 import { RestBar } from '@/components/rest-bar';
 import { ExerciseSearch } from '@/components/exercise-search';
@@ -56,15 +57,21 @@ import {
   setSetting,
   updateSet,
   workoutNumber,
+  workoutPlan,
+  updateRoutineFromWorkout,
+  freeRoutineName,
+  getRoutine,
   type PrevSet,
   type SetRow,
   type WorkoutDetail,
   type WorkoutExercise,
 } from '@/lib/db';
-import { confirm, notify } from '@/lib/dialog';
+import { choose, confirm, info, notify } from '@/lib/dialog';
+import { describeDiff, diffRoutine, hasChanges } from '@/lib/routine-diff';
 import { fmtDate, fmtDurationShort, fmtSet, fmtVolume, fmtWeight, parseNum, plural } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { markPRs, type PR } from '@/lib/records';
+import { currentPRs, markPRs, PR_LABEL, type PR } from '@/lib/records';
+import { sound } from '@/lib/sound';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -161,14 +168,17 @@ function ActiveWorkout({
     );
     if (patch.done && !set.done) {
       const ex = exercises.find((e) => e.id === set.workout_exercise_id);
-      const pr = ex
+      const prs = ex
         ? markPRs(
             ex.sets.map((s) => (s.id === set.id ? { ...s, ...patch, done: 1 } : s)),
             ex.best,
           )[ex.sets.findIndex((s) => s.id === set.id)]
-        : null;
-      if (ex && pr) celebrate(ex.name, pr);
-      else haptic.tap();
+        : [];
+      if (ex && prs.length) celebrate(ex.name, prs);
+      else {
+        haptic.tap();
+        sound.play('tick');
+      }
       if (restSeconds > 0)
         setRest({ id: Date.now(), endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000, label: ex?.name });
     }
@@ -203,8 +213,36 @@ function ActiveWorkout({
     await finishWorkout(db, workout.id);
     haptic.success();
     setRest(null);
+    await offerRoutineUpdate();
     router.setParams({ fresh: '1' }); // show the celebration on the summary
     await sync();
+  };
+
+  /** Started from a routine and did something different? Ask what to do with the routine. */
+  const offerRoutineUpdate = async () => {
+    if (workout.routine_id == null) return;
+    const routine = await getRoutine(db, workout.routine_id);
+    if (!routine) return; // routine was deleted meanwhile
+    const plan = routine.exercises.map((e) => ({ exercise_id: e.exercise_id, name: e.name, sets: e.target_sets }));
+    const diff = diffRoutine(plan, await workoutPlan(db, workout.id));
+    if (!hasChanges(diff)) return;
+    const icons = { added: 'add-circle-outline', removed: 'remove-circle-outline', sets: 'layers-outline', order: 'swap-vertical-outline' } as const;
+    const choice = await choose({
+      title: 'Update your routine?',
+      message: `This workout was different from "${routine.routine.name}".`,
+      icon: 'git-compare-outline',
+      items: describeDiff(diff).map((line) => ({ title: line.text, icon: icons[line.kind] })),
+      choices: [
+        { label: `Update "${routine.routine.name}"`, value: 'update', icon: 'refresh', primary: true },
+        { label: 'Save as new routine', value: 'new', icon: 'add' },
+      ],
+      cancelLabel: 'Keep the old routine',
+    });
+    if (choice === 'update') {
+      await updateRoutineFromWorkout(db, routine.routine.id, workout.id);
+    } else if (choice === 'new') {
+      await saveWorkoutAsRoutine(db, workout.id, await freeRoutineName(db, routine.routine.name));
+    }
   };
 
   const discard = async () => {
@@ -393,7 +431,7 @@ function ExerciseCard({
   onDeleteSet: (setId: number) => void;
   onRemove: () => void;
 }) {
-  const prs = markPRs(ex.sets, ex.best);
+  const prs = currentPRs(ex.sets, ex.best);
   return (
     <Card style={{ padding: S.md, gap: 2 }}>
       <View style={styles.exHead}>
@@ -427,7 +465,8 @@ function ExerciseCard({
           set={set}
           index={i}
           prev={ex.previous[i]}
-          pr={prs[i]}
+          prs={prs[i]}
+          exercise={ex.name}
           onPatch={(patch) => onPatchSet(set, patch)}
           onDelete={() => onDeleteSet(set.id)}
         />
@@ -442,20 +481,23 @@ function SetLine({
   set,
   index,
   prev,
-  pr,
+  prs,
+  exercise,
   onPatch,
   onDelete,
 }: {
   set: SetRow;
   index: number;
   prev: PrevSet | undefined;
-  pr: PR | null;
+  prs: PR[];
+  exercise: string;
   onPatch: (patch: { weight: number | null; reps: number | null; done: boolean }) => void;
   onDelete: () => void;
 }) {
   const [weightText, setWeightText] = useState(fmtWeight(set.weight));
   const [repsText, setRepsText] = useState(set.reps == null ? '' : String(set.reps));
   const done = set.done === 1;
+  const pr = prs.length > 0;
 
   // 0 = open, 1 = done; drives the row colour. `pop` bounces the tick.
   const doneAnim = useSharedValue(done ? 1 : 0);
@@ -522,8 +564,13 @@ function SetLine({
       </Animated.View>
       <Pressable
         style={styles.colNum}
+        onPress={pr ? () => showRecords(exercise, index, prs) : undefined}
         onLongPress={onDelete}
-        accessibilityLabel={`Set ${index + 1}, long press to delete`}>
+        accessibilityLabel={
+          pr
+            ? `Set ${index + 1}: ${plural(prs.length, 'record')}, tap for details`
+            : `Set ${index + 1}, long press to delete`
+        }>
         {pr ? (
           <Animated.View entering={ZoomIn.springify().damping(8)}>
             <Ionicons name="trophy" size={13} color={C.gold} />
@@ -534,8 +581,9 @@ function SetLine({
       </Pressable>
       <Pressable
         style={styles.colPrev}
-        disabled={!prev || done}
+        disabled={pr ? false : !prev || done}
         onPress={() => {
+          if (pr) return showRecords(exercise, index, prs);
           if (!prev) return;
           setWeightText(fmtWeight(prev.weight));
           setRepsText(prev.reps == null ? '' : String(prev.reps));
@@ -543,7 +591,7 @@ function SetLine({
         }}>
         {pr ? (
           <Text style={[styles.prevText, { color: C.gold, fontFamily: F.semi }]} numberOfLines={1}>
-            {pr.kind === 'weight' ? 'Weight PR' : pr.kind === 'reps' ? 'Rep PR' : '1RM PR'}
+            {prs.map((p) => PR_LABEL[p.kind]).join(' + ')} PR
           </Text>
         ) : (
           <Text style={styles.prevText} numberOfLines={1}>
@@ -604,13 +652,18 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
   }, [db, workout]);
 
   // Every record set in this workout, in order.
+  // Records still standing at the end of the workout (a set that was beaten
+  // again later in the same workout doesn't count).
   const records = exercises.flatMap((ex) =>
-    markPRs(ex.sets, ex.best).flatMap((pr, i) => (pr ? [{ ex, pr, set: ex.sets[i] }] : [])),
+    currentPRs(ex.sets, ex.best).flatMap((prs, i) => (prs.length ? [{ ex, prs, set: ex.sets[i], index: i }] : [])),
   );
+  const recordCount = records.reduce((n, r) => n + r.prs.length, 0);
   const prSetIds = new Set(records.map((r) => r.set.id));
 
   useEffect(() => {
-    if (justFinished) haptic.record();
+    if (!justFinished) return;
+    haptic.record();
+    sound.play('complete');
   }, [justFinished]);
 
   const remove = async () => {
@@ -646,7 +699,7 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
           <View style={styles.hero}>
             <Animated.View entering={ZoomIn.springify().damping(9)} style={styles.heroBadge}>
               <LinearGradient colors={[C.accent, '#0E7490']} style={StyleSheet.absoluteFill} />
-              <Ionicons name={records.length ? 'trophy' : 'checkmark'} size={30} color={C.onAccent} />
+              <Ionicons name={recordCount ? 'trophy' : 'checkmark'} size={30} color={C.onAccent} />
             </Animated.View>
             <Animated.Text
               entering={FadeInDown.delay(150).duration(350)}
@@ -655,7 +708,7 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
             </Animated.Text>
             <Animated.Text entering={FadeInDown.delay(250).duration(350)} style={[text.dim, { textAlign: 'center' }]}>
               {number ? `${ordinal(number)} workout` : workout.name}
-              {records.length ? `  ·  ${plural(records.length, 'new record')}` : ''}
+              {recordCount ? `  ·  ${plural(recordCount, 'new record')}` : ''}
             </Animated.Text>
           </View>
         ) : (
@@ -699,13 +752,16 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
                   <View style={styles.recordIcon}>
                     <Ionicons name="trophy" size={14} color="#2A1E05" />
                   </View>
-                  <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                     <Text style={text.strong} numberOfLines={1}>
                       {r.ex.name}
+                      <Text style={text.faint}>{`  ·  set ${r.index + 1}`}</Text>
                     </Text>
-                    <Text style={[text.faint, { color: C.gold }]} numberOfLines={1}>
-                      {r.pr.title} · {r.pr.detail}
-                    </Text>
+                    {r.prs.map((pr) => (
+                      <Text key={pr.kind} style={[text.faint, { color: C.gold }]} numberOfLines={1}>
+                        {pr.title} · {pr.detail}
+                      </Text>
+                    ))}
                   </View>
                 </Animated.View>
               ))}
@@ -743,7 +799,7 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
           </ListCard>
         </Animated.View>
       </Page>
-      {justFinished ? <Confetti count={records.length ? 70 : 40} originTop="18%" /> : null}
+      {justFinished ? <Confetti count={recordCount ? 70 : 40} originTop="18%" /> : null}
     </View>
   );
 }
@@ -758,6 +814,18 @@ function StatCard({ icon, label, children }: { icon: IconName; label: string; ch
       {children}
     </View>
   );
+}
+
+/** Card listing the records a set beat (opened by tapping its trophy). */
+function showRecords(exercise: string, index: number, prs: PR[]) {
+  info({
+    title: prs.length > 1 ? `${prs.length} records on set ${index + 1}` : `Record on set ${index + 1}`,
+    message: exercise,
+    tone: 'gold',
+    icon: 'trophy',
+    items: prs.map((p) => ({ title: p.title, detail: p.detail })),
+    confirmLabel: 'Nice',
+  });
 }
 
 function ordinal(n: number): string {

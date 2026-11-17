@@ -6,11 +6,12 @@ import { Pressable, StyleSheet, Text, View, type PressableStateCallbackType } fr
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { Elapsed } from '@/components/elapsed';
+import { SoundToggle } from '@/components/sound-toggle';
 import { WeekStrip, startOfWeek } from '@/components/week-strip';
 import { Button, Empty, Page, PageHeader, SectionTitle, Stat, text } from '@/components/ui';
 import { createRoutine, getActiveWorkout, listFinishedWorkouts, listRoutines, startWorkout } from '@/lib/db';
 import { confirm } from '@/lib/dialog';
-import { fmtVolume } from '@/lib/format';
+import { fmtVolume, plural } from '@/lib/format';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -51,7 +52,11 @@ export default function WorkoutTab() {
 
   return (
     <Page maxWidth={960} topInset>
-      <PageHeader title={greeting()} sub={week.length ? motivation(week.length) : 'Ready when you are.'} />
+      <PageHeader
+        title={greeting()}
+        sub={week.length ? motivation(week.length) : 'Ready when you are.'}
+        right={<SoundToggle />}
+      />
 
       <WeekStrip finishedAt={finishedAt} />
 
@@ -100,35 +105,40 @@ export default function WorkoutTab() {
       ) : (
         <View style={styles.grid}>
           {routines.map((r, i) => (
-            <AnimatedPressable
+            <Animated.View
               key={r.id}
               entering={FadeInDown.delay(i * 60).duration(300)}
-              onPress={() => router.push({ pathname: '/routine/[id]', params: { id: String(r.id) } })}
-              style={(s: PressState) => [
-                styles.routine,
-                desktop && styles.routineDesktop,
-                s.hovered && { borderColor: C.borderHi },
-              ]}>
-              <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                <Text style={text.h2} numberOfLines={1}>
-                  {r.name}
-                </Text>
-                <Text style={text.faint} numberOfLines={2}>
-                  {r.exercise_names ?? 'No exercises yet'}
-                </Text>
-              </View>
-              {r.exercise_count > 0 ? (
-                <Button label="Start" icon="play" kind="secondary" small onPress={() => start(r.id)} />
-              ) : null}
-            </AnimatedPressable>
+              style={desktop ? styles.routineDesktop : { width: '100%' }}>
+              <Pressable
+                onPress={() => router.push({ pathname: '/routine/[id]', params: { id: String(r.id) } })}
+                style={(s: PressState) => [styles.routine, s.hovered && { borderColor: C.borderHi }]}>
+                <View style={{ gap: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+                    <Text style={[text.h2, { flex: 1 }]} numberOfLines={1}>
+                      {r.name}
+                    </Text>
+                    <Ionicons name="create-outline" size={15} color={C.textFaint} />
+                  </View>
+                  <Text style={text.faint} numberOfLines={2}>
+                    {r.exercise_names ?? 'No exercises yet'}
+                  </Text>
+                </View>
+                <View style={styles.routineFoot}>
+                  <Text style={text.faint}>{plural(r.exercise_count, 'exercise')}</Text>
+                  {r.exercise_count > 0 ? (
+                    <Button label="Start workout" icon="play" kind="primary" small onPress={() => start(r.id)} />
+                  ) : (
+                    <Text style={[text.faint, { color: C.accent }]}>Tap to add exercises</Text>
+                  )}
+                </View>
+              </Pressable>
+            </Animated.View>
           ))}
         </View>
       )}
     </Page>
   );
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -158,17 +168,23 @@ const styles = StyleSheet.create({
     backgroundColor: C.goodDim,
   },
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.good },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: S.lg },
   routine: {
     width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: S.md,
-    padding: 14,
+    padding: S.lg,
     borderRadius: R.lg,
     borderWidth: 1,
     borderColor: C.border,
     backgroundColor: C.card,
   },
-  routineDesktop: { width: undefined, flexBasis: '45%', flexGrow: 1 },
+  routineDesktop: { flexBasis: '45%', flexGrow: 1 },
+  routineFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: S.md,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
 });

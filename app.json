@@ -14,7 +14,7 @@
       "web"
     ],
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.markstessl.ironlog"
     },
     "android": {
