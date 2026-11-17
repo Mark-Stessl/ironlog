@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExerciseDetail } from '@/components/exercise-detail';
 import { ExerciseSearch } from '@/components/exercise-search';
-import { Button, Empty, PageHeader } from '@/components/ui';
+import { Empty, PageHeader } from '@/components/ui';
 import { listExercises } from '@/lib/db';
 import { C, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
@@ -16,16 +16,6 @@ export default function ExercisesTab() {
   const [exercises] = useFocusData(listExercises);
   const [selected, setSelected] = useState<number | null>(null);
 
-  const footer = (query: string) => (
-    <Button
-      label={query ? `Create "${query}"` : 'Create custom exercise'}
-      icon="add"
-      kind="ghost"
-      onPress={() => router.push({ pathname: '/exercise-new', params: { name: query } })}
-      style={{ marginTop: S.md, alignSelf: 'flex-start' }}
-    />
-  );
-
   const search = (
     <ExerciseSearch
       exercises={exercises ?? []}
@@ -35,7 +25,7 @@ export default function ExercisesTab() {
       onPick={(ex) =>
         desktop ? setSelected(ex.id) : router.push({ pathname: '/exercise/[id]', params: { id: String(ex.id) } })
       }
-      footer={footer}
+      onCreate={(query) => router.push({ pathname: '/exercise-new', params: { name: query } })}
     />
   );
 

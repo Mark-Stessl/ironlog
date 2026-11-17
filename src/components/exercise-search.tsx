@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { ExerciseImage } from '@/components/exercise-image';
-import { Chip, Empty, text } from '@/components/ui';
+import { Button, Chip, Empty, text } from '@/components/ui';
 import type { Exercise } from '@/lib/db';
 import { EQUIPMENT, MUSCLES } from '@/lib/exercise-data';
 import { searchExercises } from '@/lib/search';
@@ -28,7 +28,7 @@ export function ExerciseSearch({
   exercises,
   onPick,
   autoFocus,
-  footer,
+  onCreate,
   header,
   selectedId,
   pickIcon,
@@ -37,8 +37,8 @@ export function ExerciseSearch({
   exercises: Exercise[];
   onPick: (ex: Exercise) => void;
   autoFocus?: boolean;
-  /** Rendered under the results, gets the current query (e.g. "Create ..." row). */
-  footer?: (query: string) => ReactNode;
+  /** Offers to create a custom exercise (with the typed name) when it isn't in the list. */
+  onCreate?: (query: string) => void;
   /** Rendered above the search box (e.g. a page title). */
   header?: ReactNode;
   /** Highlights a row (desktop list + detail view). */
@@ -127,10 +127,40 @@ export function ExerciseSearch({
           </Pressable>
         )}
         ListEmptyComponent={
-          <Empty icon="search" title="No exercise found" hint="Check the spelling or remove a filter." />
+          onCreate && query.trim() ? (
+            <View style={styles.createCard}>
+              <Ionicons name="construct-outline" size={20} color={C.accent} />
+              <Text style={[text.strong, { textAlign: 'center' }]}>No "{query.trim()}" yet</Text>
+              <Text style={[text.faint, { textAlign: 'center' }]}>
+                Your gym has a machine that's not in the list? Add it and it works like any other exercise.
+              </Text>
+              <Button
+                label={`Create "${query.trim()}"`}
+                icon="add"
+                kind="primary"
+                small
+                onPress={() => onCreate(query.trim())}
+                style={{ marginTop: 6 }}
+              />
+            </View>
+          ) : (
+            <Empty icon="search" title="No exercise found" hint="Check the spelling or remove a filter." />
+          )
         }
         ListFooterComponent={
-          footer ? <View style={{ paddingHorizontal: S.sm }}>{footer(query.trim())}</View> : undefined
+          onCreate && results.length > 0 ? (
+            <Pressable
+              onPress={() => onCreate(query.trim())}
+              style={(s: PressState) => [styles.createRow, (s.hovered || s.pressed) && { borderColor: C.accentLine }]}>
+              <View style={styles.createIcon}>
+                <Ionicons name="add" size={18} color={C.accent} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.rowName}>{query.trim() ? `Create "${query.trim()}"` : 'Create your own exercise'}</Text>
+                <Text style={styles.rowMeta}>Missing a machine? Add it yourself.</Text>
+              </View>
+            </Pressable>
+          ) : undefined
         }
       />
     </View>
@@ -159,6 +189,37 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: S.sm,
     borderRadius: R.md,
+  },
+  createCard: {
+    alignItems: 'center',
+    gap: 6,
+    marginTop: S.md,
+    marginHorizontal: S.sm,
+    padding: S.lg,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: C.accentLine,
+  },
+  createRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.md,
+    marginTop: S.sm,
+    paddingVertical: 8,
+    paddingHorizontal: S.sm,
+    borderRadius: R.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: C.border,
+  },
+  createIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: C.accentDim,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rowName: { color: C.text, fontSize: 13, fontFamily: F.medium },
   rowMeta: { color: C.textFaint, fontSize: 12, fontFamily: F.regular, marginTop: 1 },

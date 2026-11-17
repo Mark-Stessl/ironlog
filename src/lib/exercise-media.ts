@@ -11,6 +11,9 @@ export type ExerciseMedia = {
   description: string;
   steps: string[];
   tips: string[];
+  /** Detailed muscles (RepDB names like "pectoralis_major"). */
+  primary: string[];
+  secondary: string[];
 };
 
 const ALL = media as Record<string, ExerciseMedia>;

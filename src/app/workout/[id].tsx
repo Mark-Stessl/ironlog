@@ -175,10 +175,7 @@ function ActiveWorkout({
           )[ex.sets.findIndex((s) => s.id === set.id)]
         : [];
       if (ex && prs.length) celebrate(ex.name, prs);
-      else {
-        haptic.tap();
-        sound.play('tick');
-      }
+      else haptic.tap(); // no sound for a normal set, only a light tap
       if (restSeconds > 0)
         setRest({ id: Date.now(), endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000, label: ex?.name });
     }
@@ -409,6 +406,9 @@ function ActiveWorkout({
             exercises={library ?? []}
             pickIcon="add"
             padding={20}
+            onCreate={(query) =>
+              router.push({ pathname: '/exercise-new', params: { name: query, workoutId: String(workout.id) } })
+            }
             header={<Text style={text.h2}>Add exercise</Text>}
             onPick={(ex) => addFromPanel(ex.id)}
           />

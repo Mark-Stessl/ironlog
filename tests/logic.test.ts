@@ -176,7 +176,10 @@ test('database: full workout flow', async (t) => {
   assert.ok(await dbm.getRoutine(db, r));
 
   // Custom exercise, duplicate names reuse the existing one.
-  const c1 = await dbm.createExercise(db, 'Hammer Strength Row', 'Back', 'Machine');
+  const c1 = await dbm.createExercise(db, 'Hammer Strength Row', 'Back', 'Machine', ['Biceps', 'Back', 'Forearms']);
+  const custom = (await dbm.getExercise(db, c1))!;
+  assert.equal(custom.is_custom, 1);
+  assert.equal(custom.secondary, 'Biceps,Forearms', 'primary muscle is not repeated as secondary');
   const c2 = await dbm.createExercise(db, 'hammer strength row ', 'Back', 'Machine');
   assert.equal(c1, c2);
 
@@ -316,4 +319,25 @@ test('database: update a routine from a workout, or save a copy', async () => {
   const updated = (await dbm.getRoutine(db, r))!;
   assert.equal(updated.routine.name, 'Leg day');
   assert.deepEqual(updated.exercises.map((e) => [e.name, e.target_sets]), [['Leg Press', 3], ['Seated Leg Curl', 1]]);
+});
+
+test('body map: detailed muscles for built-in exercises, groups for custom ones', async () => {
+  const { musclesFor } = await import('../src/lib/muscles');
+  const media = (await import('../src/lib/exercise-media.json')).default as Record<string, any>;
+  // Every detailed muscle in the data must be drawable.
+  const known = new Set(['abductors','adductors','anterior_deltoid','biceps_brachii','brachialis','brachioradialis','erector_spinae','forearm_extensors','forearm_flexors','forearms','gastrocnemius','gluteus_maximus','gluteus_medius','hamstrings','hip_flexors','infraspinatus_teres_minor','lateral_deltoid','latissimus_dorsi','obliques','pectoralis_major','posterior_deltoid','quadratus_lumborum','quadriceps','rectus_abdominis','rhomboids','serratus_anterior','soleus','supraspinatus','tibialis_anterior','transverse_abdominis','trapezius','triceps_brachii']);
+  for (const [name, m] of Object.entries(media)) {
+    for (const mus of [...m.primary, ...m.secondary]) assert.ok(known.has(mus), `${name}: ${mus}`);
+    assert.ok(musclesFor({ name, muscle: 'Chest' }).primary.length > 0, `${name} has primary muscles`);
+  }
+
+  const lat = musclesFor({ name: 'Lat Pulldown', muscle: 'Back' });
+  assert.deepEqual(lat.primary, ['lats']);
+  assert.ok(lat.secondary.includes('biceps'));
+  assert.deepEqual(lat.primaryLabels, ['Lats']);
+
+  const custom = musclesFor({ name: 'My Gym Row', muscle: 'Back', secondary: 'Biceps,Back,Nonsense' });
+  assert.deepEqual(custom.primary, ['lats', 'upperBack', 'traps']);
+  assert.deepEqual(custom.secondary, ['biceps']);
+  assert.deepEqual(custom.secondaryLabels, ['Biceps']);
 });

@@ -17,6 +17,13 @@
    "Adjust the seat so the handles line up with mid-chest.",
    "Keep your shoulder blades pulled back against the pad as you press.",
    "Press to full extension without forcefully locking your elbows."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Pec Deck": {
@@ -38,6 +45,13 @@
    "Keep your shoulders down and back against the seat.",
    "Avoid letting the handles fly back past a comfortable stretch.",
    "Focus on squeezing your chest rather than pressing with your arms."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "serratus_anterior"
   ]
  },
  "Cable Crossover": {
@@ -58,6 +72,12 @@
    "Maintain the same elbow bend throughout; do not press the weight.",
    "Step one foot forward for a stable, balanced stance.",
    "Control the stretch; do not let the cables yank your arms back."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid"
   ]
  },
  "Low Cable Fly": {
@@ -78,6 +98,12 @@
    "Maintain the same elbow bend throughout; do not press the weight.",
    "Step one foot forward for a stable, balanced stance.",
    "Control the stretch; do not let the cables yank your arms back."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid"
   ]
  },
  "Bench Press (Barbell)": {
@@ -98,6 +124,13 @@
    "Keep your feet flat on the floor.",
    "Maintain a slight arch in your lower back.",
    "Drive through your legs for stability."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Incline Bench Press (Barbell)": {
@@ -118,6 +151,13 @@
    "Keep your shoulder blades pinched together against the bench.",
    "Lower the bar without bouncing it off your chest.",
    "Keep your feet planted and your glutes on the bench."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Decline Bench Press (Barbell)": {
@@ -136,6 +176,13 @@
   "tips": [
    "Control the descent.",
    "Keep elbows at about 45 degrees to the torso."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Bench Press (Dumbbell)": {
@@ -154,6 +201,13 @@
   "tips": [
    "Keep wrists neutral throughout.",
    "Squeeze your chest at the top of the movement."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Incline Bench Press (Dumbbell)": {
@@ -173,6 +227,13 @@
    "Keep your wrists stacked directly over your elbows.",
    "Press up without banging the dumbbells together at the top.",
    "Keep your shoulder blades pulled back against the bench."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Dumbbell Fly": {
@@ -191,6 +252,12 @@
   "tips": [
    "Keep a consistent bend in the elbows throughout.",
    "Do not let the dumbbells go too low."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid"
   ]
  },
  "Bench Press (Smith Machine)": {
@@ -212,6 +279,13 @@
    "Align the bench so the bar lands at mid-chest, not the neck.",
    "Keep your shoulder blades pulled back and down against the bench.",
    "Keep your feet planted and your glutes on the bench."
+  ],
+  "primary": [
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Incline Bench Press (Smith Machine)": {
@@ -233,6 +307,13 @@
    "Position the bench so the bar lands on the upper chest, not the throat.",
    "Stack your wrists directly above your elbows.",
    "Avoid driving your head forward off the bench as you press."
+  ],
+  "primary": [
+   "anterior_deltoid",
+   "pectoralis_major"
+  ],
+  "secondary": [
+   "triceps_brachii"
   ]
  },
  "Push Up": {
@@ -253,6 +334,13 @@
    "Tuck your elbows toward your body rather than flaring them out wide.",
    "Brace your core and squeeze your glutes to prevent sagging hips.",
    "Keep your neck neutral by gazing slightly ahead of your hands."
+  ],
+  "primary": [
+   "pectoralis_major",
+   "triceps_brachii"
+  ],
+  "secondary": [
+   "anterior_deltoid"
   ]
  },
  "Chest Dip": {
@@ -273,6 +361,13 @@
    "Keep your shoulders pulled down away from your ears.",
    "Bend your knees and cross your ankles to minimize swinging.",
    "Stop the descent if you feel pinching in your shoulders."
+  ],
+  "primary": [
+   "pectoralis_major",
+   "triceps_brachii"
+  ],
+  "secondary": [
+   "anterior_deltoid"
   ]
  },
  "Assisted Dip (Machine)": {
@@ -293,6 +388,14 @@
    "Keep your elbows tracking back rather than flaring out wide.",
    "Stop the descent if you feel pinching in the shoulders.",
    "Reduce the assistance gradually as pressing strength improves."
+  ],
+  "primary": [
+   "pectoralis_major",
+   "triceps_brachii"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "rhomboids"
   ]
  },
  "Lat Pulldown": {
@@ -313,6 +416,14 @@
    "Drive your elbows down and back rather than pulling with your hands.",
    "Avoid leaning far back or using momentum to move the weight.",
    "Keep your chest lifted and shoulders down away from your ears."
+  ],
+  "primary": [
+   "latissimus_dorsi"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "posterior_deltoid",
+   "rhomboids"
   ]
  },
  "Close Grip Lat Pulldown": {
@@ -333,6 +444,15 @@
    "Lean back only slightly, not excessively.",
    "Avoid using momentum to pull the handle down.",
    "Drive your elbows down and back, not just your hands."
+  ],
+  "primary": [
+   "latissimus_dorsi"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "brachialis",
+   "posterior_deltoid",
+   "rhomboids"
   ]
  },
  "Lat Pulldown (Machine)": {
@@ -353,6 +473,14 @@
    "Drive your elbows down and back rather than pulling with your hands.",
    "Avoid leaning far back or using momentum to move the weight.",
    "Keep your chest lifted and shoulders down away from your ears."
+  ],
+  "primary": [
+   "latissimus_dorsi"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "posterior_deltoid",
+   "rhomboids"
   ]
  },
  "Seated Cable Row": {
@@ -374,6 +502,15 @@
    "Keep your torso upright with minimal rocking.",
    "Drive your elbows straight back, not out to the sides.",
    "Squeeze your shoulder blades together at the end of the pull."
+  ],
+  "primary": [
+   "latissimus_dorsi",
+   "rhomboids"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "erector_spinae",
+   "posterior_deltoid"
   ]
  },
  "Seated Row (Machine)": {
@@ -395,6 +532,15 @@
    "Pull with the elbows rather than the hands, so the lats and mid-back lead and the biceps assist.",
    "Keep the chest on the pad and the shoulders down; shrugging or leaning back turns the row into an upper trapezius pull.",
    "Let the shoulder blades spread forward at the start of each repetition to get a full stretch before the next pull."
+  ],
+  "primary": [
+   "latissimus_dorsi",
+   "rhomboids"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "posterior_deltoid",
+   "trapezius"
   ]
  },
  "T-Bar Row": {
@@ -416,6 +562,15 @@
    "Keep your hips fixed and avoid heaving the torso upright.",
    "Maintain a soft bend in your knees to protect the lower back.",
    "Let the weight stretch your lats fully at the bottom."
+  ],
+  "primary": [
+   "latissimus_dorsi",
+   "rhomboids"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "erector_spinae",
+   "trapezius"
   ]
  },
  "Straight Arm Pulldown": {
@@ -436,6 +591,13 @@
    "Maintain a slight elbow bend without turning the movement into a pressdown.",
    "Hinge slightly at the hips and keep your back flat.",
    "Avoid using body momentum to swing the bar down."
+  ],
+  "primary": [
+   "latissimus_dorsi"
+  ],
+  "secondary": [
+   "posterior_deltoid",
+   "triceps_brachii"
   ]
  },
  "Assisted Pull Up (Machine)": {
@@ -456,6 +618,15 @@
    "Pull your shoulder blades down before bending your arms.",
    "Avoid swinging or using momentum from the knee pad.",
    "Decrease the assistance over time to progress toward unassisted reps."
+  ],
+  "primary": [
+   "latissimus_dorsi"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "forearm_flexors",
+   "posterior_deltoid",
+   "rhomboids"
   ]
  },
  "Pull Up": {
@@ -474,6 +645,14 @@
   "tips": [
    "Avoid swinging or kipping.",
    "Engage your lats by pulling your elbows down."
+  ],
+  "primary": [
+   "latissimus_dorsi"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "posterior_deltoid",
+   "rhomboids"
   ]
  },
  "Chin Up": {
@@ -492,6 +671,13 @@
   "tips": [
    "Keep the core tight throughout.",
    "Avoid excessive swinging."
+  ],
+  "primary": [
+   "biceps_brachii",
+   "latissimus_dorsi"
+  ],
+  "secondary": [
+   "rhomboids"
   ]
  },
  "Bent Over Row (Barbell)": {
@@ -511,6 +697,14 @@
   "tips": [
    "Keep your torso at roughly 45 degrees.",
    "Do not use momentum to swing the weight."
+  ],
+  "primary": [
+   "latissimus_dorsi",
+   "rhomboids"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "posterior_deltoid"
   ]
  },
  "Dumbbell Row": {
@@ -531,6 +725,14 @@
    "Avoid rotating the torso to hoist the weight higher.",
    "Let your arm extend fully at the bottom for a complete stretch.",
    "Keep your back flat from head to hips throughout the set."
+  ],
+  "primary": [
+   "latissimus_dorsi",
+   "rhomboids"
+  ],
+  "secondary": [
+   "biceps_brachii",
+   "posterior_deltoid"
   ]
  },
  "Deadlift (Barbell)": {
@@ -550,6 +752,15 @@
   "tips": [
    "Keep the bar close to your body.",
    "Do not round your lower back."
+  ],
+  "primary": [
+   "erector_spinae",
+   "gluteus_maximus",
+   "hamstrings"
+  ],
+  "secondary": [
+   "quadriceps",
+   "trapezius"
   ]
  },
  "Back Extension": {
@@ -568,6 +779,13 @@
   "tips": [
    "Keep movements controlled.",
    "Do not hyperextend beyond neutral spine."
+  ],
+  "primary": [
+   "erector_spinae"
+  ],
+  "secondary": [
+   "gluteus_maximus",
+   "hamstrings"
   ]
  },
  "Shrug (Dumbbell)": {
@@ -586,6 +804,12 @@
   "tips": [
    "Do not roll your shoulders.",
    "Focus on squeezing the traps at the top."
+  ],
+  "primary": [
+   "trapezius"
+  ],
+  "secondary": [
+   "rhomboids"
   ]
  },
  "Shrug (Barbell)": {
@@ -606,6 +830,12 @@
    "Avoid rolling the shoulders forward or backward at the top.",
    "Keep your arms relaxed and let the traps do the work.",
    "Keep your neck neutral instead of jutting the chin forward."
+  ],
+  "primary": [
+   "trapezius"
+  ],
+  "secondary": [
+   "rhomboids"
   ]
  },
  "Face Pull": {
@@ -626,6 +856,13 @@
    "Keep your elbows high, roughly in line with your shoulders.",
    "Choose a light weight and prioritize control over load.",
    "Avoid leaning back or shrugging your shoulders as you pull."
+  ],
+  "primary": [
+   "posterior_deltoid",
+   "rhomboids"
+  ],
+  "secondary": [
+   "trapezius"
   ]
  },
  "Shoulder Press (Machine)": {
@@ -645,6 +882,14 @@
   "tips": [
    "Keep your lower back pressed into the pad without overarching.",
    "Keep your wrists stacked directly over your elbows as you press."
+  ],
+  "primary": [
+   "anterior_deltoid",
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "trapezius",
+   "triceps_brachii"
   ]
  },
  "Lateral Raise (Machine)": {
@@ -665,6 +910,13 @@
    "Set the seat first. If the pivot sits below your shoulder the pads drive your arm across your body instead of out to the side, and the side deltoid stops being the muscle doing the work.",
    "Push with the arm, not the hand. The handles are there to stop your arms sliding off the pads -- gripping hard pulls the biceps and forearms into a raise that should be all deltoid.",
    "Stop at shoulder height. Going higher hands the last part of the rep to the traps, and the machine will happily let you."
+  ],
+  "primary": [
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "trapezius"
   ]
  },
  "Reverse Fly (Machine)": {
@@ -686,6 +938,13 @@
    "Lead with the elbows rather than pulling with the hands, so the rear deltoids do the work and not the biceps.",
    "Keep the chest on the pad and the neck relaxed; leaning back or shrugging moves the load to the upper trapezius.",
    "Choose a weight you can lower under control; a lighter load with a slow return works the rear deltoids better than a heavy swing."
+  ],
+  "primary": [
+   "posterior_deltoid"
+  ],
+  "secondary": [
+   "rhomboids",
+   "trapezius"
   ]
  },
  "Lateral Raise (Cable)": {
@@ -706,6 +965,13 @@
    "Lead with the elbow, not the hand.",
    "Pause briefly at the top, do not swing.",
    "Use a lighter load than for dumbbell — cable tension is constant."
+  ],
+  "primary": [
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "trapezius"
   ]
  },
  "Overhead Press (Barbell)": {
@@ -725,6 +991,14 @@
   "tips": [
    "Do not lean back excessively.",
    "Squeeze your glutes for stability."
+  ],
+  "primary": [
+   "anterior_deltoid",
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "trapezius",
+   "triceps_brachii"
   ]
  },
  "Shoulder Press (Dumbbell)": {
@@ -746,6 +1020,14 @@
    "Stack your wrists directly over your elbows throughout the press.",
    "Exhale as you press up and inhale as you lower.",
    "Keep your elbows slightly in front of your shoulders rather than flared wide."
+  ],
+  "primary": [
+   "anterior_deltoid",
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "trapezius",
+   "triceps_brachii"
   ]
  },
  "Arnold Press": {
@@ -766,6 +1048,15 @@
    "Time the palm rotation evenly throughout the press, not all at once.",
    "Avoid arching your lower back as the weight goes overhead.",
    "Use a lighter load than a standard press to control the rotation."
+  ],
+  "primary": [
+   "anterior_deltoid",
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "serratus_anterior",
+   "trapezius",
+   "triceps_brachii"
   ]
  },
  "Lateral Raise (Dumbbell)": {
@@ -784,6 +1075,12 @@
   "tips": [
    "Slight bend in the elbows.",
    "Lead with your elbows, not your hands."
+  ],
+  "primary": [
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "anterior_deltoid"
   ]
  },
  "Front Raise (Dumbbell)": {
@@ -802,6 +1099,12 @@
   "tips": [
    "Avoid using momentum.",
    "Slight elbow bend reduces joint stress."
+  ],
+  "primary": [
+   "anterior_deltoid"
+  ],
+  "secondary": [
+   "lateral_deltoid"
   ]
  },
  "Rear Delt Fly (Dumbbell)": {
@@ -822,6 +1125,13 @@
    "Choose a light weight to keep the movement strict.",
    "Avoid using momentum from the torso to swing the weights up.",
    "Lead with your elbows rather than your hands."
+  ],
+  "primary": [
+   "posterior_deltoid",
+   "rhomboids"
+  ],
+  "secondary": [
+   "trapezius"
   ]
  },
  "Shoulder Press (Smith Machine)": {
@@ -843,6 +1153,14 @@
    "Stand directly under the bar path before unracking.",
    "Tilt your head back slightly as the bar passes your face.",
    "Avoid flaring your ribs as the bar travels overhead."
+  ],
+  "primary": [
+   "anterior_deltoid",
+   "lateral_deltoid"
+  ],
+  "secondary": [
+   "trapezius",
+   "triceps_brachii"
   ]
  },
  "Upright Row": {
@@ -863,6 +1181,14 @@
    "Use a lighter weight if you feel pinching in your shoulders.",
    "Avoid bending your wrists excessively as the bar rises.",
    "Avoid swinging or using your legs to heave the weight up."
+  ],
+  "primary": [
+   "lateral_deltoid",
+   "trapezius"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "biceps_brachii"
   ]
  },
  "Bicep Curl (Machine)": {
@@ -883,6 +1209,12 @@
    "Keep your upper arms pressed into the pad throughout the set.",
    "Avoid shrugging your shoulders as you curl.",
    "Extend your arms fully at the bottom without bouncing."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis"
   ]
  },
  "Preacher Curl (Machine)": {
@@ -902,6 +1234,12 @@
   "tips": [
    "Do not let the elbows lift off the pad at the top.",
    "Stop just short of full extension at the bottom to protect the elbow tendons."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis"
   ]
  },
  "Bicep Curl (Cable)": {
@@ -922,6 +1260,12 @@
    "Keep your elbows from drifting forward as you curl.",
    "Straighten your arms fully at the bottom of each rep.",
    "Avoid leaning back to help lift the weight."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis"
   ]
  },
  "Bicep Curl (Barbell)": {
@@ -940,6 +1284,13 @@
   "tips": [
    "Avoid swinging the torso.",
    "Keep elbows pinned at your sides."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis",
+   "forearm_flexors"
   ]
  },
  "EZ Bar Curl": {
@@ -958,6 +1309,13 @@
   "tips": [
    "Use the inner or outer grip to vary emphasis.",
    "Keep your wrists neutral on the angled grips."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis",
+   "brachioradialis"
   ]
  },
  "Bicep Curl (Dumbbell)": {
@@ -976,6 +1334,13 @@
   "tips": [
    "Keep your elbows pinned to your sides.",
    "Avoid swinging the weights."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis",
+   "forearm_flexors"
   ]
  },
  "Hammer Curl": {
@@ -995,6 +1360,13 @@
    "Keep your elbows pinned to your sides throughout.",
    "Keep your wrists straight and rigid throughout the curl.",
    "Avoid leaning back or swinging the weights up."
+  ],
+  "primary": [
+   "biceps_brachii",
+   "brachialis"
+  ],
+  "secondary": [
+   "forearm_flexors"
   ]
  },
  "Incline Curl (Dumbbell)": {
@@ -1015,6 +1387,12 @@
    "Keep your head and shoulders against the bench throughout.",
    "Don't let your elbows drift forward as you curl.",
    "Avoid shrugging your shoulders forward as you lift the weight."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis"
   ]
  },
  "Concentration Curl": {
@@ -1035,6 +1413,12 @@
    "Keep your upper arm vertical and let only the forearm move.",
    "Avoid swinging your torso to help the weight up.",
    "Match the reps on each arm to avoid muscle imbalances."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis"
   ]
  },
  "Preacher Curl (EZ Bar)": {
@@ -1055,6 +1439,12 @@
    "Avoid bouncing at the bottom to protect the biceps tendon.",
    "Keep your wrists neutral rather than letting them bend back.",
    "Don't shrug your shoulders as the bar rises."
+  ],
+  "primary": [
+   "biceps_brachii"
+  ],
+  "secondary": [
+   "brachialis"
   ]
  },
  "Tricep Pushdown": {
@@ -1074,7 +1464,11 @@
   "tips": [
    "Keep your torso upright.",
    "Only your forearms should move."
-  ]
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": []
  },
  "Tricep Rope Pushdown": {
   "id": "tricep-pushdown",
@@ -1093,7 +1487,11 @@
   "tips": [
    "Keep your torso upright.",
    "Only your forearms should move."
-  ]
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": []
  },
  "Overhead Tricep Extension (Cable)": {
   "id": "cable-overhead-tricep-extension",
@@ -1114,6 +1512,12 @@
    "Keep the elbows pointing forward and the upper arms still; letting them flare out or drift turns the extension into a press.",
    "Step far enough forward that the cable holds you steady, and avoid arching your lower back as the arms go overhead.",
    "Use a weight you can control through the full stretch; heavy loads pull the elbows apart."
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": [
+   "anterior_deltoid"
   ]
  },
  "Tricep Extension (Machine)": {
@@ -1134,7 +1538,11 @@
    "Set the seat height so your upper arms lie flat on the pad and your elbows line up with the machine's pivot — that alignment is what keeps the work on the triceps.",
    "Keep your upper arms glued to the pad; letting them lift turns the movement into a press and takes the triceps out of it.",
    "Straighten your arms fully without snapping the elbows, and resist on the way back instead of letting the weight stack drop."
-  ]
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": []
  },
  "Seated Dip (Machine)": {
   "id": "seated-dip-machine",
@@ -1155,6 +1563,13 @@
    "Keep the elbows close to your sides so the work stays on the triceps.",
    "Do not let the shoulders roll forward or shrug as the handles rise; stop where the stretch in the chest and shoulders is comfortable.",
    "Keep your back against the pad; leaning forward shifts the work toward the chest."
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "pectoralis_major"
   ]
  },
  "Skull Crusher": {
@@ -1173,7 +1588,11 @@
   "tips": [
    "Keep upper arms vertical throughout.",
    "Lower slowly to protect the elbows."
-  ]
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": []
  },
  "Close Grip Bench Press": {
   "id": "close-grip-bench-press",
@@ -1191,6 +1610,13 @@
   "tips": [
    "Keep elbows tucked to maximize triceps activation.",
    "Avoid too-narrow a grip to prevent wrist strain."
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "pectoralis_major"
   ]
  },
  "Overhead Tricep Extension (Dumbbell)": {
@@ -1211,7 +1637,11 @@
    "Move only your forearms, keeping the upper arms still.",
    "Brace your core to avoid arching your lower back.",
    "Choose a weight light enough to reach a full stretch."
-  ]
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": []
  },
  "Tricep Kickback": {
   "id": "tricep-kickback",
@@ -1231,7 +1661,11 @@
    "Keep your elbows close to your sides and finish with your arms in line with your torso.",
    "Use light dumbbells and avoid swinging them with momentum.",
    "Keep your back flat and your knees slightly bent to hold the hinge."
-  ]
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": []
  },
  "Bench Dip": {
   "id": "bench-dips",
@@ -1251,6 +1685,13 @@
    "Keep your hips close to the bench as you lower.",
    "Avoid letting your shoulders roll forward at the bottom.",
    "Bend your knees to make the movement easier."
+  ],
+  "primary": [
+   "triceps_brachii"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "pectoralis_major"
   ]
  },
  "Wrist Curl": {
@@ -1271,6 +1712,12 @@
    "Move only at the wrist — keep the forearm still.",
    "Roll the dumbbell to the fingertips for full range.",
    "Train both arms with the same load and reps."
+  ],
+  "primary": [
+   "forearm_flexors"
+  ],
+  "secondary": [
+   "brachioradialis"
   ]
  },
  "Reverse Curl": {
@@ -1289,6 +1736,13 @@
   "tips": [
    "Keep wrists straight.",
    "Move through a full range of motion."
+  ],
+  "primary": [
+   "brachialis",
+   "forearm_extensors"
+  ],
+  "secondary": [
+   "biceps_brachii"
   ]
  },
  "Farmer's Walk": {
@@ -1308,6 +1762,16 @@
    "Use the heaviest dumbbells you can control without compromising form.",
    "Breathe deeply and rhythmically to maintain core tension.",
    "Imagine you are balancing a glass of water on your head."
+  ],
+  "primary": [
+   "forearm_flexors",
+   "trapezius"
+  ],
+  "secondary": [
+   "gluteus_maximus",
+   "obliques",
+   "quadriceps",
+   "rectus_abdominis"
   ]
  },
  "Leg Press": {
@@ -1328,6 +1792,13 @@
    "Keep your lower back and hips pressed into the seat.",
    "Lower only as far as you can without your hips tucking under.",
    "Drive evenly through your whole foot, not just your toes."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "hamstrings"
   ]
  },
  "Leg Extension": {
@@ -1348,7 +1819,11 @@
    "Adjust the seat so your knees align with the machine's pivot point.",
    "Keep your back pressed against the pad throughout.",
    "Avoid swinging the weight up with momentum."
-  ]
+  ],
+  "primary": [
+   "quadriceps"
+  ],
+  "secondary": []
  },
  "Hack Squat": {
   "id": "hack-squat",
@@ -1369,6 +1844,14 @@
    "Keep your lower back pressed against the pad throughout the movement.",
    "Placing the feet higher on the platform shifts emphasis to the glutes and hamstrings.",
    "Control the descent; do not bounce out of the bottom position."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "gastrocnemius",
+   "hamstrings"
   ]
  },
  "Squat (Smith Machine)": {
@@ -1390,6 +1873,15 @@
    "Keep your knees tracking in line with your toes.",
    "Brace your core and keep your chest up throughout the movement.",
    "Set the safety stops just below your lowest squat depth."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "erector_spinae",
+   "gluteus_medius",
+   "hamstrings"
   ]
  },
  "Squat (Barbell)": {
@@ -1409,6 +1901,14 @@
   "tips": [
    "Keep your chest up throughout the movement.",
    "Push your knees out in line with your toes."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "erector_spinae",
+   "hamstrings"
   ]
  },
  "Front Squat": {
@@ -1427,6 +1927,14 @@
   "tips": [
    "Maintain high elbows to keep the bar stable.",
    "A more upright torso increases quad activation."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "erector_spinae",
+   "hamstrings"
   ]
  },
  "Goblet Squat": {
@@ -1445,6 +1953,13 @@
   "tips": [
    "The goblet position naturally encourages an upright torso.",
    "Push knees out at the bottom."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "hamstrings"
   ]
  },
  "Bulgarian Split Squat": {
@@ -1465,6 +1980,13 @@
    "Keep most of your weight on the front leg.",
    "Track your front knee over your toes without letting it cave inward.",
    "Square your hips forward and avoid rotating toward the bench."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "hamstrings"
   ]
  },
  "Lunge (Dumbbell)": {
@@ -1484,6 +2006,13 @@
   "tips": [
    "Keep your torso upright.",
    "Front knee should track over your toes."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "hamstrings"
   ]
  },
  "Walking Lunge": {
@@ -1505,6 +2034,14 @@
    "Lower until both knees reach about 90 degrees.",
    "Keep your torso upright as you step.",
    "Drive through your front heel to step forward smoothly."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "quadriceps"
+  ],
+  "secondary": [
+   "gluteus_medius",
+   "hamstrings"
   ]
  },
  "Seated Leg Curl": {
@@ -1525,6 +2062,12 @@
    "Keep your back firmly against the backrest throughout the movement.",
    "Point toes slightly toward your shins at peak contraction to increase hamstring activation.",
    "Control the eccentric phase — do not let the weight pull your legs back quickly."
+  ],
+  "primary": [
+   "hamstrings"
+  ],
+  "secondary": [
+   "gastrocnemius"
   ]
  },
  "Lying Leg Curl": {
@@ -1545,6 +2088,12 @@
    "Keep your hips pressed into the bench throughout the set.",
    "Avoid jerking the weight up with your lower back.",
    "Use a full range of motion without letting the stack slam down."
+  ],
+  "primary": [
+   "hamstrings"
+  ],
+  "secondary": [
+   "gastrocnemius"
   ]
  },
  "Romanian Deadlift (Barbell)": {
@@ -1565,6 +2114,13 @@
    "Keep your spine neutral and avoid rounding the lower back.",
    "Maintain the same slight knee bend for the entire rep.",
    "Go only as deep as your hamstring flexibility allows."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "hamstrings"
+  ],
+  "secondary": [
+   "erector_spinae"
   ]
  },
  "Romanian Deadlift (Dumbbell)": {
@@ -1586,6 +2142,14 @@
    "Keep your knee angle constant; the movement is a hinge, not a squat.",
    "Tuck your chin slightly to keep your spine in one straight line.",
    "Squeeze your glutes at the top without leaning backward."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "hamstrings"
+  ],
+  "secondary": [
+   "erector_spinae",
+   "forearm_flexors"
   ]
  },
  "Good Morning": {
@@ -1606,7 +2170,13 @@
    "Start with a light bar and master the hinge first.",
    "Keep a soft bend in your knees throughout.",
    "Stop the descent if your lower back starts to round."
-  ]
+  ],
+  "primary": [
+   "erector_spinae",
+   "gluteus_maximus",
+   "hamstrings"
+  ],
+  "secondary": []
  },
  "Hip Thrust (Machine)": {
   "id": "plate-loaded-glute-drive",
@@ -1626,6 +2196,14 @@
    "Get the pad on the hip crease. Sitting it up on the stomach is the only genuinely uncomfortable thing this machine does, and it is fixed by moving the pad, not by adding padding.",
    "Finish with the hips, not the lower back. If the ribs flare at the top you have run out of hip extension and started arching, which is where the machine stops training the glutes.",
    "This is the hip thrust to reach for when the bench and barbell are taken -- the back pad and platform are part of the frame, so there is no setup to get wrong."
+  ],
+  "primary": [
+   "gluteus_maximus"
+  ],
+  "secondary": [
+   "gluteus_medius",
+   "hamstrings",
+   "quadriceps"
   ]
  },
  "Hip Thrust (Barbell)": {
@@ -1646,6 +2224,13 @@
    "Tuck your chin and keep your ribs down at the top.",
    "Finish with your shins vertical, driving through your heels.",
    "Reach full hip extension without arching your lower back."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "gluteus_medius"
+  ],
+  "secondary": [
+   "hamstrings"
   ]
  },
  "Hip Abduction (Machine)": {
@@ -1666,6 +2251,12 @@
    "Sit tall and keep your back against the pad.",
    "Don't let the weight stack slam down between reps.",
    "Choose a resistance that allows a full range of motion."
+  ],
+  "primary": [
+   "gluteus_medius"
+  ],
+  "secondary": [
+   "abductors"
   ]
  },
  "Hip Adduction (Machine)": {
@@ -1687,7 +2278,11 @@
    "Choose a start width that stretches without straining your groin.",
    "Move through the whole range at an even, controlled speed.",
    "Do not let the weight stack slam down as your legs open back out."
-  ]
+  ],
+  "primary": [
+   "adductors"
+  ],
+  "secondary": []
  },
  "Cable Kickback": {
   "id": "cable-kickback",
@@ -1707,6 +2302,12 @@
    "Lead with the heel to maximize glute activation over hamstrings.",
    "Keep the hips square; avoid rotating the pelvis as the leg kicks back.",
    "The movement comes entirely from the hip — keep the back and torso still."
+  ],
+  "primary": [
+   "gluteus_maximus"
+  ],
+  "secondary": [
+   "hamstrings"
   ]
  },
  "Kettlebell Swing": {
@@ -1727,6 +2328,14 @@
    "Power the swing with your hips, not your arms or shoulders.",
    "Treat it as a hinge, not a squat, with minimal knee bend.",
    "Finish each rep standing tall with glutes squeezed and core tight."
+  ],
+  "primary": [
+   "gluteus_maximus",
+   "hamstrings"
+  ],
+  "secondary": [
+   "erector_spinae",
+   "quadriceps"
   ]
  },
  "Standing Calf Raise (Machine)": {
@@ -1748,7 +2357,12 @@
    "Keep your knees straight but not locked throughout the movement.",
    "Pause briefly in the stretched position instead of bouncing.",
    "Avoid cutting the range of motion short as fatigue sets in."
-  ]
+  ],
+  "primary": [
+   "gastrocnemius",
+   "soleus"
+  ],
+  "secondary": []
  },
  "Seated Calf Raise": {
   "id": "seated-calf-raise",
@@ -1767,6 +2381,12 @@
   "tips": [
    "The bent knee slackens the gastrocnemius, so the soleus does more of the work.",
    "Use a full range of motion."
+  ],
+  "primary": [
+   "soleus"
+  ],
+  "secondary": [
+   "gastrocnemius"
   ]
  },
  "Calf Raise (Smith Machine)": {
@@ -1788,6 +2408,12 @@
    "Avoid bouncing out of the bottom stretch position.",
    "Keep your knees straight but not forcefully locked.",
    "Use a slow tempo through the full range rather than pumping short reps."
+  ],
+  "primary": [
+   "gastrocnemius"
+  ],
+  "secondary": [
+   "soleus"
   ]
  },
  "Ab Crunch (Machine)": {
@@ -1809,6 +2435,13 @@
    "Initiate the movement with your abs, not your arms.",
    "Exhale as you crunch forward.",
    "Avoid using momentum by rocking your body."
+  ],
+  "primary": [
+   "rectus_abdominis"
+  ],
+  "secondary": [
+   "obliques",
+   "transverse_abdominis"
   ]
  },
  "Cable Crunch": {
@@ -1829,6 +2462,13 @@
    "Avoid pulling the rope down with your arms.",
    "Keep your hips fixed so movement comes from the spine.",
    "Exhale fully as you crunch down."
+  ],
+  "primary": [
+   "rectus_abdominis"
+  ],
+  "secondary": [
+   "obliques",
+   "transverse_abdominis"
   ]
  },
  "Hanging Leg Raise": {
@@ -1849,6 +2489,13 @@
    "Curl your pelvis up at the top to fully engage your abs.",
    "Keep your shoulders engaged rather than hanging passively.",
    "Bend your knees to make the movement easier if needed."
+  ],
+  "primary": [
+   "hip_flexors",
+   "rectus_abdominis"
+  ],
+  "secondary": [
+   "obliques"
   ]
  },
  "Captain's Chair Leg Raise": {
@@ -1869,6 +2516,14 @@
    "Keep your legs as straight as possible throughout.",
    "Avoid swinging — control the movement with your core.",
    "For less difficulty, bend the knees slightly."
+  ],
+  "primary": [
+   "hip_flexors",
+   "rectus_abdominis"
+  ],
+  "secondary": [
+   "obliques",
+   "transverse_abdominis"
   ]
  },
  "Crunch": {
@@ -1889,6 +2544,12 @@
    "Avoid pulling on your neck with your hands.",
    "Exhale as you curl up and inhale on the way down.",
    "Keep your lower back pressed into the floor throughout."
+  ],
+  "primary": [
+   "rectus_abdominis"
+  ],
+  "secondary": [
+   "obliques"
   ]
  },
  "Plank": {
@@ -1908,6 +2569,13 @@
   "tips": [
    "Do not let your hips sag or pike up.",
    "Squeeze your glutes and quads."
+  ],
+  "primary": [
+   "rectus_abdominis",
+   "transverse_abdominis"
+  ],
+  "secondary": [
+   "erector_spinae"
   ]
  },
  "Russian Twist": {
@@ -1928,6 +2596,13 @@
    "Rotate from the torso rather than just swinging the arms.",
    "Keep your chest lifted and your spine long as you twist.",
    "Move at a controlled tempo instead of racing through reps."
+  ],
+  "primary": [
+   "obliques",
+   "rectus_abdominis"
+  ],
+  "secondary": [
+   "hip_flexors"
   ]
  },
  "Ab Wheel": {
@@ -1948,6 +2623,16 @@
    "Brace the core before each rep — do not let the lower back arch.",
    "Build range gradually, stopping short of any hip sag.",
    "Drop to a wall stop if you cannot control the bottom."
+  ],
+  "primary": [
+   "rectus_abdominis",
+   "transverse_abdominis"
+  ],
+  "secondary": [
+   "anterior_deltoid",
+   "latissimus_dorsi",
+   "obliques",
+   "serratus_anterior"
   ]
  }
 }

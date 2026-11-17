@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { BodyMap } from '@/components/body-map';
 import { ExerciseImage } from '@/components/exercise-image';
 import { Button, Card, Empty, ListCard, ListRow, SectionTitle, text } from '@/components/ui';
 import { computeRecords, getExercise, getExerciseHistory } from '@/lib/db';
 import { formVideoUrl, getMedia, REPDB_URL } from '@/lib/exercise-media';
+import { musclesFor } from '@/lib/muscles';
 import { fmtDate, fmtSet, fmtVolume, fmtWeight } from '@/lib/format';
 import { C, F, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
@@ -51,6 +53,11 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
       </View>
 
       {media ? <Text style={[text.body, { color: C.textDim }]}>{media.description}</Text> : null}
+
+      <SectionTitle title="Muscles worked" />
+      <Card style={{ paddingVertical: S.lg }}>
+        <BodyMap muscles={musclesFor(exercise)} height={desktop ? 340 : 280} />
+      </Card>
 
       <SectionTitle title="Records" />
       <Card style={styles.records}>

@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputInstance } from 'react-native';
 
 import { ExerciseImage } from '@/components/exercise-image';
 import { ExerciseSearch } from '@/components/exercise-search';
@@ -23,7 +24,7 @@ import {
 import { confirm, notify } from '@/lib/dialog';
 import { plural } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { C, F, S, useIsDesktop } from '@/lib/theme';
+import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 export default function RoutineScreen() {
@@ -49,6 +50,10 @@ function RoutineEditor({
   const desktop = useIsDesktop();
   const [library] = useFocusData(listExercises);
   const [name, setName] = useState(routine.name);
+  const nameRef = useRef<TextInputInstance>(null);
+  const [nameFocused, setNameFocused] = useState(false);
+  // Freshly created routines still have the default name: put the cursor in the name field.
+  const [isNew] = useState(routine.name === 'New routine');
 
   const remove = async () => {
     const ok = await confirm({
@@ -85,31 +90,56 @@ function RoutineEditor({
   };
 
   const content = (
-    <ScrollView contentContainerStyle={[styles.page, desktop && styles.pageDesktop]} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      contentContainerStyle={[styles.page, desktop && styles.pageDesktop]}
+      keyboardShouldPersistTaps="handled">
       <Stack.Screen
         options={{
-          headerRight: () => <HeaderButton icon="trash-outline" label="Delete routine" onPress={remove} color={C.danger} />,
+          headerRight: () => (
+            <HeaderButton icon="trash-outline" label="Delete routine" onPress={remove} color={C.danger} />
+          ),
         }}
       />
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        onEndEditing={() => renameRoutine(db, routine.id, name)}
-        onBlur={() => renameRoutine(db, routine.id, name)}
-        placeholder="Routine name, e.g. Push day"
-        placeholderTextColor={C.textFaint}
-        style={styles.nameInput}
-      />
-      <Text style={text.faint}>
+      <Text style={text.label}>Routine name</Text>
+      <Pressable
+        onPress={() => nameRef.current?.focus()}
+        style={[styles.nameField, nameFocused && { borderColor: C.accentLine }]}>
+        <TextInput
+          ref={nameRef}
+          value={name}
+          onChangeText={setName}
+          onFocus={() => setNameFocused(true)}
+          onEndEditing={() => renameRoutine(db, routine.id, name)}
+          onBlur={() => {
+            setNameFocused(false);
+            renameRoutine(db, routine.id, name);
+          }}
+          autoFocus={isNew}
+          selectTextOnFocus={isNew}
+          placeholder="e.g. Push day, Leg day, Upper A"
+          placeholderTextColor={C.textFaint}
+          returnKeyType="done"
+          style={styles.nameInput}
+        />
+        <Ionicons name="pencil" size={16} color={nameFocused ? C.accent : C.textDim} />
+      </Pressable>
+      <Text style={[text.faint, { marginTop: 2 }]}>
         {plural(exercises.length, 'exercise')} ·{' '}
-        {plural(exercises.reduce((n, e) => n + e.target_sets, 0), 'set')}
+        {plural(
+          exercises.reduce((n, e) => n + e.target_sets, 0),
+          'set',
+        )}
       </Text>
 
       {exercises.length === 0 ? (
         <Empty
           icon="list-outline"
           title="No exercises yet"
-          hint={desktop ? 'Pick exercises from the library on the right.' : 'Add the machines and exercises for this routine.'}
+          hint={
+            desktop
+              ? 'Pick exercises from the library on the right.'
+              : 'Add the machines and exercises for this routine.'
+          }
         />
       ) : (
         <ListCard style={{ marginTop: S.sm }}>
@@ -170,7 +200,13 @@ function RoutineEditor({
       ) : null}
 
       <View style={[styles.actions, desktop && { alignSelf: 'flex-start' }]}>
-        <Button label="Save routine" icon="checkmark" kind="primary" onPress={save} style={desktop ? undefined : { flex: 1 }} />
+        <Button
+          label="Save routine"
+          icon="checkmark"
+          kind="primary"
+          onPress={save}
+          style={desktop ? undefined : { flex: 1 }}
+        />
         {exercises.length > 0 ? <Button label="Start now" icon="play" kind="ghost" onPress={start} /> : null}
       </View>
       <Text style={[text.faint, desktop ? undefined : { textAlign: 'center' }]}>
@@ -188,6 +224,7 @@ function RoutineEditor({
           exercises={library ?? []}
           pickIcon="add"
           padding={20}
+          onCreate={(query) => router.push({ pathname: '/exercise-new', params: { name: query, routineId: String(routine.id) } })}
           header={<Text style={text.h2}>Add exercise</Text>}
           onPick={async (ex) => {
             await addExerciseToRoutine(db, routine.id, ex.id);
@@ -203,7 +240,18 @@ const styles = StyleSheet.create({
   page: { padding: S.lg, gap: 6, paddingBottom: S.xxl },
   pageDesktop: { paddingHorizontal: 40, paddingTop: S.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
   panel: { width: 360, borderLeftWidth: 1, borderLeftColor: C.border },
-  nameInput: { color: C.text, fontSize: 22, fontFamily: F.display, letterSpacing: -0.5, paddingVertical: 2 },
+  nameField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    height: 50,
+    paddingHorizontal: 14,
+    borderRadius: R.md,
+    borderWidth: 1,
+    borderColor: C.borderHi,
+    backgroundColor: C.card,
+  },
+  nameInput: { flex: 1, color: C.text, fontSize: 19, fontFamily: F.display, letterSpacing: -0.4, paddingVertical: 0 },
   stepper: { flexDirection: 'row', alignItems: 'center' },
   stepperValue: { color: C.textDim, fontSize: 12, fontFamily: F.medium, minWidth: 44, textAlign: 'center' },
   actions: { flexDirection: 'row', gap: S.sm, marginTop: S.lg },

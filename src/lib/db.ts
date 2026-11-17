@@ -14,6 +14,8 @@ export type Exercise = {
   equipment: string;
   aliases: string;
   is_custom: number;
+  /** Comma-separated extra muscle groups (custom exercises), e.g. "Triceps,Shoulders". */
+  secondary: string;
   use_count: number;
 };
 
@@ -141,7 +143,14 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       await db.execAsync('PRAGMA user_version = 1');
     });
   }
-  // Future schema changes: add `if (version < 2) { ... }` blocks here.
+  if (version < 2) {
+    // Custom exercises can say which other muscles they work (for the body map).
+    await db.withTransactionAsync(async () => {
+      await db.execAsync("ALTER TABLE exercises ADD COLUMN secondary TEXT NOT NULL DEFAULT ''");
+      await db.execAsync('PRAGMA user_version = 2');
+    });
+  }
+  // Future schema changes: add `if (version < 3) { ... }` blocks here.
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
@@ -186,6 +195,7 @@ export async function createExercise(
   name: string,
   muscle: string,
   equipment: string,
+  secondary: string[] = [],
 ): Promise<number> {
   const clean = name.trim();
   const existing = await db.getFirstAsync<{ id: number }>(
@@ -194,10 +204,11 @@ export async function createExercise(
   );
   if (existing) return existing.id;
   const res = await db.runAsync(
-    'INSERT INTO exercises (name, muscle, equipment, is_custom) VALUES (?, ?, ?, 1)',
+    'INSERT INTO exercises (name, muscle, equipment, is_custom, secondary) VALUES (?, ?, ?, 1, ?)',
     clean,
     muscle,
     equipment,
+    secondary.filter((m) => m !== muscle).join(','),
   );
   return res.lastInsertRowId;
 }

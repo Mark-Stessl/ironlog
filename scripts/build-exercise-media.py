@@ -127,6 +127,8 @@ def main(path: str) -> None:
             'description': e['description_en'],
             'steps': e['instructions_en'],
             'tips': e['tips_en'],
+            'primary': e.get('primary_muscles', []),
+            'secondary': e.get('secondary_muscles', []),
         }
     with open('src/lib/exercise-media.json', 'w') as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
