@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 
 import { CelebrationProvider } from '@/components/celebrate';
+import { DialogHost } from '@/components/dialog-host';
 import { Sidebar } from '@/components/sidebar';
 import { migrate } from '@/lib/db';
 import { C, F, useIsDesktop } from '@/lib/theme';
@@ -65,6 +66,7 @@ export default function RootLayout() {
               </Stack>
             </View>
           </View>
+          <DialogHost />
         </CelebrationProvider>
       </ThemeProvider>
     </SQLiteProvider>

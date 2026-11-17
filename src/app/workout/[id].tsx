@@ -128,7 +128,7 @@ function ActiveWorkout({
     await reload();
   };
   const [restSeconds, setRestSeconds] = useState(90);
-  const [rest, setRest] = useState<{ id: number; endAt: number; total: number } | null>(null);
+  const [rest, setRest] = useState<{ id: number; endAt: number; total: number; label?: string } | null>(null);
 
   useEffect(() => {
     getSetting(db, 'rest_seconds', '90').then((v) => setRestSeconds(Number(v)));
@@ -170,7 +170,7 @@ function ActiveWorkout({
       if (ex && pr) celebrate(ex.name, pr);
       else haptic.tap();
       if (restSeconds > 0)
-        setRest({ id: Date.now(), endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000 });
+        setRest({ id: Date.now(), endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000, label: ex?.name });
     }
   };
 
@@ -179,14 +179,23 @@ function ActiveWorkout({
 
   const finish = async () => {
     if (doneSets.length === 0) {
-      notify('Nothing logged yet', 'Tick off at least one set, or discard the workout.');
+      notify('Nothing logged yet', 'Tick off at least one set to finish, or discard the workout.', 'barbell-outline');
       return;
     }
     const open = exercises.flatMap((e) => e.sets).length - doneSets.length;
     const ok = await confirm({
       title: 'Finish workout?',
-      message: open > 0 ? `${open} unticked ${open === 1 ? 'set' : 'sets'} will be removed.` : undefined,
-      confirmLabel: 'Finish',
+      message: 'Nice work. Your sets will be saved and your records updated.',
+      icon: 'flag-outline',
+      tone: 'success',
+      details: [
+        { label: 'Duration', value: fmtDurationShort(Date.now() - workout.started_at) },
+        { label: 'Volume', value: fmtVolume(volume) },
+        { label: 'Sets', value: String(doneSets.length) },
+      ],
+      note: open > 0 ? `${plural(open, 'unticked set')} will be removed.` : undefined,
+      confirmLabel: 'Finish workout',
+      cancelLabel: 'Keep going',
     });
     if (!ok) return;
     await writes.current;
@@ -200,9 +209,14 @@ function ActiveWorkout({
 
   const discard = async () => {
     const ok = await confirm({
-      title: 'Discard workout?',
-      message: 'Everything logged in this workout will be deleted.',
-      confirmLabel: 'Discard',
+      title: 'Discard this workout?',
+      message:
+        doneSets.length > 0
+          ? `${plural(doneSets.length, 'logged set')} will be deleted. This can't be undone.`
+          : "Nothing will be saved. This can't be undone.",
+      icon: 'trash-outline',
+      confirmLabel: 'Discard workout',
+      cancelLabel: 'Keep workout',
       destructive: true,
     });
     if (!ok) return;
@@ -220,15 +234,23 @@ function ActiveWorkout({
       <ScrollView
         contentContainerStyle={[styles.page, desktop && styles.pageDesktop, { paddingBottom: insets.bottom + 120 }]}
         keyboardShouldPersistTaps="handled">
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          onEndEditing={() => renameWorkout(db, workout.id, name)}
-          onBlur={() => renameWorkout(db, workout.id, name)}
-          placeholder="Workout name"
-          placeholderTextColor={C.textFaint}
-          style={styles.nameInput}
-        />
+        <View style={styles.topActions}>
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            onEndEditing={() => renameWorkout(db, workout.id, name)}
+            onBlur={() => renameWorkout(db, workout.id, name)}
+            placeholder="Workout name"
+            placeholderTextColor={C.textFaint}
+            style={[styles.nameInput, { flex: 1, minWidth: 0 }]}
+          />
+          {desktop ? (
+            <>
+              <Button label="Discard" kind="ghost" small onPress={discard} />
+              <Button label="Finish workout" icon="flag-outline" kind="primary" small onPress={finish} />
+            </>
+          ) : null}
+        </View>
         <View style={styles.stats}>
           <Stat label="Duration">
             <Elapsed since={workout.started_at} style={text.num} />
@@ -299,15 +321,28 @@ function ActiveWorkout({
             onPress={() => router.push({ pathname: '/exercise-picker', params: { workoutId: String(workout.id) } })}
           />
         ) : null}
-        <View style={styles.footer}>
-          {exercises.length > 0 ? <Text style={text.faint}>Long-press a set number to delete it.</Text> : <View />}
-          <Button label="Discard workout" kind="danger" small onPress={discard} />
+        {exercises.length > 0 ? (
+          <Text style={[text.faint, { textAlign: 'center' }]}>Long-press a set number to delete it.</Text>
+        ) : null}
+
+        <View style={[styles.endCard, !desktop && { flexDirection: 'column', alignItems: 'stretch' }]}>
+          <View style={{ flex: desktop ? 1 : undefined, minWidth: 0 }}>
+            <Text style={text.strong}>Done for today?</Text>
+            <Text style={text.faint}>
+              {doneSets.length ? `${plural(doneSets.length, 'set')} · ${fmtVolume(volume)}` : 'Tick off a set to finish.'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: S.sm }}>
+            <Button label="Discard" icon="trash-outline" kind="danger" small onPress={discard} style={!desktop && { flex: 1 }} />
+            <Button label="Finish workout" icon="flag-outline" kind="primary" small onPress={finish} style={!desktop && { flex: 2 }} />
+          </View>
         </View>
       </ScrollView>
 
       {rest ? (
         <RestBar
           key={rest.id}
+          label={rest.label}
           endAt={rest.endAt}
           total={rest.total}
           bottomInset={insets.bottom}
@@ -325,7 +360,7 @@ function ActiveWorkout({
       <Stack.Screen
         options={{
           title: 'Workout',
-          headerRight: () => <HeaderButton label="Finish" onPress={finish} color={C.good} />,
+          headerRight: desktop ? undefined : () => <HeaderButton label="Finish" onPress={finish} color={C.accent} />,
         }}
       />
       {log}
@@ -778,7 +813,18 @@ const styles = StyleSheet.create({
   stats: { flexDirection: 'row', gap: 28, marginBottom: S.xs },
   exHead: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginBottom: 6 },
   exName: { color: C.accent, fontSize: 14, fontFamily: F.semi },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: S.sm },
+  endCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    marginTop: S.sm,
+    padding: S.md,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderStyle: 'dashed',
+  },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: S.sm },
   setRow: {
     flexDirection: 'row',
     alignItems: 'center',

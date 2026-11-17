@@ -8,6 +8,7 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Workout logging**: exercises → sets → kg × reps, tick sets off as you go
 - **"Previous" column**: shows what you lifted last time; tap it to copy the values, or just tick an empty set to reuse them
 - **Rest timer**: starts when you tick a set (off / 60 / 90 / 120 / 150 / 180 s, with −15 / +15 / skip)
+- **Rest-over reminder**: a notification when the break is over, even if you switched to another app (phone app; in the browser it works on desktop and Android Chrome after tapping the bell, but not on iPhone, which pauses web pages in the background)
 - **Machine and exercise search**: about 110 built-in machines and exercises, suggestions while you type
   - by name (`che` → Chest Press, Chest Dip …)
   - by muscle or body area (`back`, `legs`, `abs`)

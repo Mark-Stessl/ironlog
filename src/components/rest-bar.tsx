@@ -16,6 +16,7 @@ import Animated, {
 
 import { fmtDuration } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { askForReminders, reminderState, scheduleRestReminder, type ReminderState } from '@/lib/rest-reminder';
 import { C, F, R, S } from '@/lib/theme';
 
 /** Countdown shown at the bottom of the workout after ticking off a set. */
@@ -23,12 +24,15 @@ export function RestBar({
   endAt,
   total,
   bottomInset,
+  label,
   onAdjust,
   onDone,
 }: {
   endAt: number;
   total: number;
   bottomInset: number;
+  /** Exercise you're resting for, used in the reminder text. */
+  label?: string;
   onAdjust: (deltaMs: number) => void;
   onDone: () => void;
 }) {
@@ -53,6 +57,22 @@ export function RestBar({
     const t = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(t);
   }, []);
+
+  // Reminder for when you switch to another app during the break.
+  const [reminders, setReminders] = useState<ReminderState>(() => reminderState());
+  useEffect(() => {
+    let cancel: (() => void) | null = null;
+    let gone = false;
+    const body = label ? `Time for your next set of ${label}.` : 'Time for your next set.';
+    scheduleRestReminder(Math.max(0, endAt - Date.now()) / 1000, body).then((c) => {
+      if (gone) c();
+      else cancel = c;
+    });
+    return () => {
+      gone = true;
+      cancel?.();
+    };
+  }, [endAt, label, reminders]);
 
   const lastSeconds = remaining > 0 && remaining <= 3500;
   useEffect(() => {
@@ -100,6 +120,17 @@ export function RestBar({
               {fmtDuration(Math.max(0, remaining))}
             </Animated.Text>
             <View style={{ flex: 1 }} />
+            {reminders === 'ask' ? (
+              <Pressable
+                onPress={async () => {
+                  await askForReminders();
+                  setReminders(reminderState());
+                }}
+                style={styles.btn}
+                accessibilityLabel="Notify me when the rest is over, even in another app">
+                <Ionicons name="notifications-outline" size={14} color={C.accent} />
+              </Pressable>
+            ) : null}
             <Pressable onPress={() => onAdjust(-15000)} style={styles.btn} accessibilityLabel="15 seconds less rest">
               <Text style={styles.btnText}>−15</Text>
             </Pressable>

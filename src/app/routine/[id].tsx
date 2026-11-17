@@ -22,6 +22,7 @@ import {
 } from '@/lib/db';
 import { confirm, notify } from '@/lib/dialog';
 import { plural } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
 import { C, F, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -59,6 +60,17 @@ function RoutineEditor({
     if (!ok) return;
     await deleteRoutine(db, routine.id);
     router.back();
+  };
+
+  const save = async () => {
+    if (exercises.length === 0) {
+      notify('Add an exercise first', 'A routine needs at least one exercise.', 'list-outline');
+      return;
+    }
+    await renameRoutine(db, routine.id, name);
+    haptic.success();
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
   };
 
   const start = async () => {
@@ -148,19 +160,22 @@ function RoutineEditor({
         </ListCard>
       )}
 
-      <View style={styles.actions}>
-        {!desktop ? (
-          <Button
-            label="Add exercise"
-            icon="add"
-            onPress={() => router.push({ pathname: '/exercise-picker', params: { routineId: String(routine.id) } })}
-            style={{ flex: 1 }}
-          />
-        ) : null}
-        {exercises.length > 0 ? (
-          <Button label="Start routine" icon="play" kind="primary" onPress={start} style={desktop ? undefined : { flex: 1 }} />
-        ) : null}
+      {!desktop ? (
+        <Button
+          label="Add exercise"
+          icon="add"
+          onPress={() => router.push({ pathname: '/exercise-picker', params: { routineId: String(routine.id) } })}
+          style={{ marginTop: S.sm }}
+        />
+      ) : null}
+
+      <View style={[styles.actions, desktop && { alignSelf: 'flex-start' }]}>
+        <Button label="Save routine" icon="checkmark" kind="primary" onPress={save} style={desktop ? undefined : { flex: 1 }} />
+        {exercises.length > 0 ? <Button label="Start now" icon="play" kind="ghost" onPress={start} /> : null}
       </View>
+      <Text style={[text.faint, desktop ? undefined : { textAlign: 'center' }]}>
+        Saving won't start a workout. Start it from the Workout tab whenever you're ready.
+      </Text>
     </ScrollView>
   );
 
@@ -191,5 +206,5 @@ const styles = StyleSheet.create({
   nameInput: { color: C.text, fontSize: 22, fontFamily: F.display, letterSpacing: -0.5, paddingVertical: 2 },
   stepper: { flexDirection: 'row', alignItems: 'center' },
   stepperValue: { color: C.textDim, fontSize: 12, fontFamily: F.medium, minWidth: 44, textAlign: 'center' },
-  actions: { flexDirection: 'row', gap: S.sm, marginTop: S.md },
+  actions: { flexDirection: 'row', gap: S.sm, marginTop: S.lg },
 });
