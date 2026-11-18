@@ -448,3 +448,160 @@ test('measures: formatting and typo check', async () => {
   assert.equal(validMeasure(824, 'kg'), false);
   assert.equal(validMeasure(82.4, 'kg'), true);
 });
+
+test('food data: USDA foods and recipes are complete and plausible', async () => {
+  const { BUILTIN_FOODS, BUILTIN_RECIPES } = await import('../src/lib/foods');
+  const { kcalFromMacros } = await import('../src/lib/nutrition');
+  assert.ok(BUILTIN_FOODS.length >= 140);
+  for (const f of BUILTIN_FOODS) {
+    for (const k of ['kcal', 'protein', 'carbs', 'fat'] as const) assert.ok(f.per100[k] != null, `${f.name} ${k}`);
+    assert.ok(f.servings.length > 0 && f.servings[0].g > 0, `${f.name} serving`);
+  }
+  // Atwater check: energy matches protein/carbs/fat within 20 % (skips drinks with alcohol and near-zero foods).
+  for (const f of BUILTIN_FOODS.filter((x) => (x.per100.kcal ?? 0) > 40 && !/wine|vinegar/i.test(x.name))) {
+    // USDA carbohydrate includes fibre; fibre counts 2 kcal/g (EU factor).
+    const fiber = f.per100.fiber ?? 0;
+    const est = kcalFromMacros({ ...f.per100, carbs: (f.per100.carbs ?? 0) - fiber }) + fiber * 2;
+    assert.ok(Math.abs(est - f.per100.kcal!) / f.per100.kcal! < 0.2, `${f.name}: ${f.per100.kcal} vs ${est}`);
+  }
+  const meals = new Set(BUILTIN_RECIPES.map((r) => r.recipe!.meal));
+  assert.deepEqual([...meals].sort(), ['breakfast', 'dinner', 'lunch', 'snack']);
+  for (const r of BUILTIN_RECIPES) {
+    const kcal = (r.per100.kcal! * r.servings[0].g) / 100;
+    assert.ok(kcal > 150 && kcal < 1100, `${r.name}: ${kcal} kcal`);
+  }
+  const shake = BUILTIN_RECIPES.find((r) => r.ref === 'r:protein-shake')!;
+  const protein = (shake.per100.protein! * shake.servings[0].g) / 100;
+  assert.ok(protein > 30 && protein < 40, `shake protein ${protein}`); // 30 g whey + 300 g milk + banana
+});
+
+test('food search: German names, recipes by ingredient, typos', async () => {
+  const { BUILTIN_FOODS, BUILTIN_RECIPES, searchFoods } = await import('../src/lib/foods');
+  const all = [...BUILTIN_RECIPES, ...BUILTIN_FOODS];
+  const top = (q: string, n = 3) => searchFoods(q, all).slice(0, n).map((f) => f.name);
+  assert.equal(top('banane')[0], 'Banana');
+  assert.equal(top('haferflocken')[0], 'Rolled oats');
+  assert.ok(top('chicken', 10).includes('Chicken, rice and broccoli bowl'));
+  assert.equal(top('paradeiser')[0], 'Tomato');
+  assert.equal(top('brokoli')[0], 'Broccoli');
+  assert.ok(searchFoods('lachs', all).some((f) => f.name === 'Salmon with potatoes and asparagus'));
+});
+
+test('nutrition goals: EU reference without profile, Henry x PAL with one', async () => {
+  const { computeGoals, restingEnergy, EU_REFERENCE } = await import('../src/lib/nutrition');
+  const eu = computeGoals(null);
+  assert.equal(eu.kcal, 2000);
+  assert.equal(eu.protein, 50);
+  assert.equal(eu.waterMl, 2000);
+  assert.equal(EU_REFERENCE.salt, 6);
+  // Man, 25, 180 cm, 80 kg: 14.4*80 + 3.13*180 + 113 = 1828.4
+  assert.equal(Math.round(restingEnergy({ sex: 'male', age: 25, heightCm: 180, weightKg: 80 })), 1828);
+  const g = computeGoals({ sex: 'male', age: 25, heightCm: 180, weightKg: 80, pal: 1.6, aim: 'maintain', proteinPerKg: 1.8 });
+  assert.equal(g.kcal, 2930); // 1828.4 * 1.6 = 2925 -> rounded to 10
+  assert.equal(g.protein, 144);
+  assert.equal(g.fat, Math.round((2930 * 0.3) / 9));
+  assert.ok(Math.abs(g.protein * 4 + g.carbs * 4 + g.fat * 9 - g.kcal) < 10);
+  const carbsShare = (g.carbs * 4) / g.kcal;
+  assert.ok(carbsShare >= 0.45 && carbsShare <= 0.6, `carbs ${carbsShare}`); // EFSA 45-60 %
+  const w = computeGoals({ sex: 'female', age: 35, heightCm: 165, weightKg: 60, pal: 1.4, aim: 'lose', proteinPerKg: 1.6 });
+  assert.equal(w.waterMl, 1600);
+  assert.ok(w.kcal < 1800 && w.kcal > 1000);
+});
+
+test('open food facts: parsing per-100 g values and units', async () => {
+  const { parseProduct, isBarcode } = await import('../src/lib/off');
+  const p = parseProduct({
+    code: '9001234567890',
+    product_name: 'Joghurt Natur',
+    brands: 'Ja! Natürlich, Rewe',
+    serving_quantity: '150',
+    serving_size: '1 Becher (150 g)',
+    nutriments: {
+      'energy-kj_100g': 268,
+      proteins_100g: 3.4,
+      carbohydrates_100g: 4.6,
+      sugars_100g: 4.6,
+      fat_100g: 3.6,
+      'saturated-fat_100g': 2.3,
+      sodium_100g: 0.04,
+      calcium_100g: 0.12,
+      'vitamin-d_100g': 0.0000001,
+    },
+  })!;
+  assert.equal(p.brand, 'Ja! Natürlich');
+  assert.equal(p.per100.kcal, 64.1); // 268 kJ / 4.184
+  assert.equal(p.per100.salt, 0.1); // sodium x 2.5
+  assert.equal(p.per100.calcium, 120); // g -> mg
+  assert.equal(p.per100.vitD, 0.1); // g -> µg
+  assert.equal(p.servingG, 150);
+  assert.equal(p.incomplete, false);
+  assert.equal(parseProduct({ code: '1', product_name: '' }), null);
+  assert.equal(parseProduct({ code: '4000000000000', product_name: 'X', nutriments: {} })!.incomplete, true);
+  assert.ok(isBarcode('9001234567890') && isBarcode('40084107') && !isBarcode('12ab') && !isBarcode('123'));
+});
+
+test('database: food log, water, own foods, products and recipes', async () => {
+  const fdb = await import('../src/lib/food-db');
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const items = await fdb.allFoodItems(db);
+  const banana = items.find((f) => f.ref === 'f:banana')!;
+  const porridge = items.find((f) => f.ref === 'r:protein-porridge')!;
+  await fdb.logFood(db, { day: '2026-11-18', meal: 'breakfast', item: porridge, grams: porridge.servings[0].g, amount: '1 serving' });
+  const id = await fdb.logFood(db, { day: '2026-11-18', meal: 'snack', item: banana, grams: 118, amount: '1 medium' });
+  await fdb.logFood(db, { day: '2026-11-17', meal: 'snack', item: banana, grams: 118, amount: '1 medium' });
+  const log = await fdb.dayLog(db, '2026-11-18');
+  assert.equal(log.length, 2);
+  assert.ok(Math.abs(log[1].n.kcal! - 105) < 1); // 118 g banana = 105 kcal
+  await fdb.updateLogAmount(db, id, banana, 236, '2 × 1 medium');
+  const totals = await fdb.dailyTotals(db, '2026-11-17', '2026-11-18');
+  assert.ok(Math.abs(totals.get('2026-11-17')!.kcal! - 105) < 1);
+  assert.ok(totals.get('2026-11-18')!.kcal! > 500);
+  assert.deepEqual(await fdb.recentRefs(db, 'snack'), ['f:banana']);
+  assert.equal(await fdb.copyMeal(db, '2026-11-18', '2026-11-19', 'breakfast'), 1);
+  await fdb.deleteLogEntry(db, id);
+  assert.equal((await fdb.dayLog(db, '2026-11-18')).length, 1);
+
+  await fdb.addWater(db, '2026-11-18', 250);
+  await fdb.addWater(db, '2026-11-18', 500);
+  assert.equal(await fdb.dayWater(db, '2026-11-18'), 750);
+  await fdb.undoWater(db, '2026-11-18');
+  assert.equal(await fdb.dayWater(db, '2026-11-18'), 250);
+
+  // Scanned product: saved once, updated on the second scan.
+  const product = { barcode: '9001234567890', name: 'Skyr', brand: 'Milfina', per100: { kcal: 63, protein: 11 }, servingG: 150, servingLabel: '1 cup', incomplete: false };
+  const ref = await fdb.saveProduct(db, product);
+  assert.equal(await fdb.saveProduct(db, { ...product, name: 'Skyr Natur' }), ref);
+  const found = (await fdb.foodByBarcode(db, '9001234567890'))!;
+  assert.equal(found.name, 'Skyr Natur');
+  assert.equal(found.servings[0].g, 150);
+
+  const own = await fdb.createCustomFood(db, { name: 'Mum’s Gulasch', brand: '', barcode: null, per100: { kcal: 150, protein: 12, carbs: 5, fat: 9 }, serving: { label: '1 plate', g: 350 } });
+  const recipe = await fdb.createRecipe(db, {
+    name: 'Gulasch with bread',
+    meal: 'dinner',
+    servings: 2,
+    ingredients: [
+      { item: (await fdb.getFoodItem(db, own))!, g: 700 },
+      { item: banana, g: 0 },
+      { item: (await fdb.getFoodItem(db, 'f:roll'))!, g: 100 },
+    ],
+    steps: 'Warm up\nServe',
+  });
+  const r = (await fdb.getFoodItem(db, recipe))!;
+  assert.equal(r.servings[0].g, 400); // (700 + 100) / 2
+  assert.equal(r.recipe!.steps.length, 2);
+  const perServing = (r.per100.kcal! * r.servings[0].g) / 100;
+  assert.ok(Math.abs(perServing - (1050 + 279) / 2) < 1, `${perServing}`);
+  const all = await fdb.allFoodItems(db);
+  assert.ok(all.some((f) => f.ref === recipe) && all.some((f) => f.ref === own));
+  assert.equal(all.find((f) => f.ref === 'f:banana')!.useCount, 1);
+
+  // Goals: stored profile and own numbers.
+  assert.equal((await fdb.getGoals(db)).kcal, 2000);
+  await fdb.setGoalSettings(db, { profile: null, custom: { kcal: 2600, waterMl: 3000 } });
+  const goals = await fdb.getGoals(db);
+  assert.equal(goals.kcal, 2600);
+  assert.equal(goals.waterMl, 3000);
+  assert.equal(goals.protein, 50);
+});

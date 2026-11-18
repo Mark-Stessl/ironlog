@@ -60,3 +60,20 @@ export function dayStreak(done: Set<string>, now = Date.now()): number {
   }
   return streak;
 }
+
+/** The day key `n` days after (or before, if negative) `key`. */
+export function addDays(key: string, n: number): string {
+  const d = new Date(dayStart(key));
+  d.setHours(12);
+  d.setDate(d.getDate() + n);
+  return dayKey(d.getTime());
+}
+
+/** "Today", "Yesterday", "Tomorrow" or "Mon, Nov 16". */
+export function relativeDay(key: string, now = Date.now()): string {
+  const today = dayKey(now);
+  if (key === today) return 'Today';
+  if (key === addDays(today, -1)) return 'Yesterday';
+  if (key === addDays(today, 1)) return 'Tomorrow';
+  return new Date(dayStart(key)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}

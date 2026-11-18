@@ -12,12 +12,18 @@ import { C, F, R, S } from '@/lib/theme';
 
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
-const NAV: { label: string; icon: IconName; href: '/' | '/history' | '/profile'; match: (p: string) => boolean }[] = [
+const NAV: { label: string; icon: IconName; href: '/' | '/food' | '/history' | '/profile'; match: (p: string) => boolean }[] = [
   {
     label: 'Workout',
     icon: 'barbell-outline',
     href: '/',
     match: (p) => p === '/' || p.startsWith('/workout') || p.startsWith('/routine'),
+  },
+  {
+    label: 'Food',
+    icon: 'nutrition-outline',
+    href: '/food',
+    match: (p) => ['/food', '/recipe-new', '/nutrition-goals'].some((x) => p.startsWith(x)),
   },
   { label: 'History', icon: 'time-outline', href: '/history', match: (p) => p.startsWith('/history') },
   {

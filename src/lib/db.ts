@@ -4,6 +4,7 @@ import { SEED_EXERCISES } from './exercise-data';
 import { defaultWorkoutName, est1RM } from './format';
 import { addToBest, NO_BEST, type Best } from './records';
 import type { PlanItem } from './routine-diff';
+import { FOOD_SCHEMA } from './food-db';
 import type { StatSet } from './stats';
 
 // ── Types ───────────────────────────────────────────────────────────────
@@ -168,7 +169,14 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       `);
     });
   }
-  // Future schema changes: add `if (version < 4) { ... }` blocks here.
+  if (version < 4) {
+    // Food tracking: own foods and scanned products, own recipes, food log, water.
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(FOOD_SCHEMA);
+      await db.execAsync('PRAGMA user_version = 4');
+    });
+  }
+  // Future schema changes: add `if (version < 5) { ... }` blocks here.
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
