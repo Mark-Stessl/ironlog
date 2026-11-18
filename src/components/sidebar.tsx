@@ -36,7 +36,7 @@ const NAV: {
   },
   {
     label: 'Recipes',
-    icon: 'book-outline',
+    icon: 'restaurant-outline',
     href: '/recipes',
     match: (p) => p.startsWith('/recipes') || p.startsWith('/food/r:') || p.startsWith('/food/u:'),
   },

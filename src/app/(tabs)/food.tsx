@@ -40,7 +40,6 @@ import {
 import { playFoodAdded } from '@/lib/food-sounds';
 import { confirm } from '@/lib/dialog';
 import { haptic } from '@/lib/haptics';
-import { pickPhoto } from '@/lib/photo';
 import { sound } from '@/lib/sound';
 import { sum } from '@/lib/nutrition';
 import { MEALS, mealForTime, mealLabel, type Meal } from '@/lib/recipes';
@@ -175,14 +174,6 @@ export default function FoodTab() {
     reload();
   };
 
-  const addMealPhoto = async (meal: Meal) => {
-    const img = await pickPhoto();
-    if (!img) return;
-    await setMealPhoto(db, day, meal, img);
-    haptic.tap();
-    reload();
-  };
-
   const openAdd = (meal: Meal) => router.push({ pathname: '/food-add', params: { meal, day } });
 
   const drink = async (ml: number) => {
@@ -241,11 +232,6 @@ export default function FoodTab() {
                       onPress={() => saveUsual(m.key)}
                     />
                   ) : null}
-                  <IconButton
-                    icon="camera-outline"
-                    label={`Photo of ${m.label.toLowerCase()}`}
-                    onPress={() => addMealPhoto(m.key)}
-                  />
                   <IconButton icon="add" label={`Add to ${m.label}`} onPress={() => openAdd(m.key)} color={C.accent} />
                 </View>
               }
@@ -369,7 +355,7 @@ export default function FoodTab() {
           onPress={() => router.push('/recipes')}
           accessibilityRole="link"
           style={({ pressed }) => [styles.moreCard, { width: desktop ? 140 : 120 }, pressed && { opacity: 0.7 }]}>
-          <Ionicons name="book-outline" size={22} color={C.accent} />
+          <Ionicons name="restaurant-outline" size={22} color={C.accent} />
           <Text style={styles.seeAllText}>All recipes</Text>
         </Pressable>
       </ScrollView>
@@ -416,13 +402,23 @@ export default function FoodTab() {
               {data?.settings.profile ? 'Goals from your body profile' : 'EU reference intakes'}
             </Text>
           </View>
+          {/* One capsule for the three page buttons, in the style of the Workout tab's sound button. */}
           <View style={styles.headIcons}>
-            <IconButton icon="book-outline" label="All recipes" size={25} onPress={() => router.push('/recipes')} />
-            <SoundToggle size={25} />
+            <IconButton
+              icon="restaurant-outline"
+              label="All recipes"
+              size={22}
+              color={C.accent}
+              onPress={() => router.push('/recipes')}
+            />
+            <View style={styles.headDivider} />
+            <SoundToggle size={22} tint={C.accent} />
+            <View style={styles.headDivider} />
             <IconButton
               icon="options-outline"
               label="Nutrition goals"
-              size={25}
+              size={22}
+              color={C.accent}
               onPress={() => router.push('/nutrition-goals')}
             />
           </View>
@@ -603,7 +599,17 @@ function EntryRow({
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'flex-end', gap: S.md },
-  headIcons: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  headIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    paddingHorizontal: 4,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
+  headDivider: { width: 1, height: 20, backgroundColor: C.accentLine },
   daySwitch: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginBottom: S.xs },
   dayStep: {
     flexDirection: 'row',
