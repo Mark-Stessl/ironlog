@@ -663,3 +663,36 @@ test('recipe photos: every built-in recipe has a bundled photo with credit', asy
     assert.ok(fs.statSync(`assets/recipes/${r.key}.jpg`).size < 120_000, `${r.key} small enough`);
   }
 });
+
+test('profile overview: nutrition averages and weight change', async () => {
+  const { nutritionSummary, weightChange } = await import('../src/lib/overview');
+  const totals = new Map([
+    ['2026-11-01', { kcal: 2000, protein: 150 }],
+    ['2026-11-02', { kcal: 2500, protein: 100 }],
+    ['2026-11-03', { kcal: 0 }],
+  ]);
+  const s = nutritionSummary(
+    totals,
+    new Map([
+      ['2026-11-01', 2000],
+      ['2026-11-02', 1000],
+    ]),
+    { kcal: 2100, protein: 140 },
+  );
+  assert.equal(s.days, 2);
+  assert.equal(s.kcal, 2250);
+  assert.equal(s.protein, 125);
+  assert.equal(s.waterMl, 1500);
+  assert.equal(s.onTarget, 1); // 2000 is within 10 % of 2100, 2500 isn't
+  assert.equal(s.proteinDays, 1);
+  assert.equal(nutritionSummary(new Map(), new Map(), { kcal: 2000, protein: 100 }).kcal, 0);
+
+  const w = [
+    { value: 80, measured_at: 100 },
+    { value: 79.4, measured_at: 250 },
+    { value: 78.9, measured_at: 300 },
+  ];
+  assert.deepEqual(weightChange(w, 200, 400), { now: 78.9, change: -1.1 });
+  assert.deepEqual(weightChange(w, 0, 200), null); // only one weigh-in, nothing before
+  assert.equal(weightChange(w, 400, 500), null);
+});

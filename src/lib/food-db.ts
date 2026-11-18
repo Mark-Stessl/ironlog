@@ -374,6 +374,23 @@ export async function deleteLogEntry(db: SQLiteDatabase, id: number): Promise<vo
   await db.runAsync('DELETE FROM food_log WHERE id = ?', id);
 }
 
+/** Puts a removed entry back exactly as it was (same id, so it keeps its place in the meal). */
+export async function restoreLogEntry(db: SQLiteDatabase, e: LogEntry): Promise<void> {
+  await db.runAsync(
+    'INSERT OR REPLACE INTO food_log (id, day, meal, ref, name, brand, grams, amount, nutrients, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    e.id,
+    e.day,
+    e.meal,
+    e.ref,
+    e.name,
+    e.brand,
+    e.grams,
+    e.amount,
+    JSON.stringify(e.n),
+    e.created_at,
+  );
+}
+
 export async function getLogEntry(db: SQLiteDatabase, id: number): Promise<LogEntry | null> {
   const r = await db.getFirstAsync<LogRow>('SELECT * FROM food_log WHERE id = ?', id);
   return r ? toEntry(r) : null;

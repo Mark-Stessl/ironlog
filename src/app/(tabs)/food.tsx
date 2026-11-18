@@ -1,18 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } from 'react-native-reanimated';
 
-import {
-  CalorieRing,
-  DetailBars,
-  EnergySplit,
-  MacroBars,
-  MicroBars,
-  WeekBars,
-} from '@/components/nutrition-charts';
+import { CalorieRing, DetailBars, EnergySplit, MacroBars, MicroBars, WeekBars } from '@/components/nutrition-charts';
 import { FoodThumb, type ThumbData } from '@/components/food-thumb';
 import { Card, IconButton, ListCard, ListRow, Page, SectionTitle, text } from '@/components/ui';
 import { WaterCard } from '@/components/water-card';
@@ -24,8 +17,10 @@ import {
   dayLog,
   dayMealPhotos,
   dayWater,
+  deleteLogEntry,
   getGoalSettings,
   goalsFrom,
+  restoreLogEntry,
   setMealPhoto,
   thumbsFor,
   undoWater,
@@ -65,6 +60,32 @@ export default function FoodTab() {
   const goals = data?.goals;
   const total = sum(log.map((e) => e.n));
   const eaten = total.kcal ?? 0;
+
+  // Removing an entry is one tap; a bar offers Undo for a few seconds.
+  const [removed, setRemoved] = useState<LogEntry | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+    },
+    [],
+  );
+  const removeEntry = async (e: LogEntry) => {
+    await deleteLogEntry(db, e.id);
+    haptic.tap();
+    setRemoved(e);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setRemoved(null), 5000);
+    reload();
+  };
+  const undoRemove = async () => {
+    if (!removed) return;
+    await restoreLogEntry(db, removed);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setRemoved(null);
+    haptic.tap();
+    reload();
+  };
 
   const addMealPhoto = async (meal: Meal) => {
     const img = await pickPhoto();
@@ -158,6 +179,7 @@ export default function FoodTab() {
                     entry={e}
                     thumb={{ ref: e.ref, ...data?.thumbs.get(e.ref) }}
                     last={i === entries.length - 1}
+                    onRemove={() => removeEntry(e)}
                   />
                 ))}
               </ListCard>
@@ -222,50 +244,69 @@ export default function FoodTab() {
   ) : null;
 
   return (
-    <Page topInset maxWidth={1100}>
-      <View style={styles.head}>
-        <View style={{ flex: 1 }}>
-          <Text style={text.title}>Food</Text>
-          <Text style={text.dim}>{data?.settings.profile ? 'Goals from your body profile' : 'EU reference intakes'}</Text>
+    <View style={{ flex: 1 }}>
+      <Page topInset maxWidth={1100}>
+        <View style={styles.head}>
+          <View style={{ flex: 1 }}>
+            <Text style={text.title}>Food</Text>
+            <Text style={text.dim}>
+              {data?.settings.profile ? 'Goals from your body profile' : 'EU reference intakes'}
+            </Text>
+          </View>
+          <IconButton icon="options-outline" label="Nutrition goals" onPress={() => router.push('/nutrition-goals')} />
         </View>
-        <IconButton icon="options-outline" label="Nutrition goals" onPress={() => router.push('/nutrition-goals')} />
-      </View>
 
-      <View style={styles.dayNav}>
-        <IconButton icon="chevron-back" label="Previous day" onPress={() => setDay(addDays(day, -1))} />
-        <Pressable onPress={() => setDay(today)} accessibilityRole="button" accessibilityLabel="Go to today">
-          <Animated.Text key={day} entering={FadeIn.duration(200)} style={styles.day}>
-            {relativeDay(day)}
-          </Animated.Text>
-        </Pressable>
-        <IconButton
-          icon="chevron-forward"
-          label="Next day"
-          onPress={() => day < today && setDay(addDays(day, 1))}
-          color={day < today ? C.textDim : C.border}
-        />
-      </View>
+        <View style={styles.dayNav}>
+          <IconButton icon="chevron-back" label="Previous day" onPress={() => setDay(addDays(day, -1))} />
+          <Pressable onPress={() => setDay(today)} accessibilityRole="button" accessibilityLabel="Go to today">
+            <Animated.Text key={day} entering={FadeIn.duration(200)} style={styles.day}>
+              {relativeDay(day)}
+            </Animated.Text>
+          </Pressable>
+          <IconButton
+            icon="chevron-forward"
+            label="Next day"
+            onPress={() => day < today && setDay(addDays(day, 1))}
+            color={day < today ? C.textDim : C.border}
+          />
+        </View>
 
-      {desktop ? (
-        <View style={styles.columns}>
-          <View style={{ flex: 1.15, minWidth: 0 }}>
+        {desktop ? (
+          <View style={styles.columns}>
+            <View style={{ flex: 1.15, minWidth: 0 }}>
+              {summary}
+              {meals}
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>{side}</View>
+          </View>
+        ) : (
+          <>
             {summary}
             {meals}
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>{side}</View>
-        </View>
-      ) : (
-        <>
-          {summary}
-          {meals}
-          {side}
-        </>
-      )}
-      <Text style={[text.faint, { marginTop: S.lg }]}>
-        Food data: Max Rubner-Institut, Bundeslebensmittelschlüssel (BLS) 4.0, CC BY 4.0. Products: Open Food Facts
-        (ODbL). Goals: EU reference intakes (Regulation 1169/2011) and EFSA.
-      </Text>
-    </Page>
+            {side}
+          </>
+        )}
+        <Text style={[text.faint, { marginTop: S.lg }]}>
+          Food data: Max Rubner-Institut, Bundeslebensmittelschlüssel (BLS) 4.0, CC BY 4.0. Products: Open Food Facts
+          (ODbL). Goals: EU reference intakes (Regulation 1169/2011) and EFSA.
+        </Text>
+      </Page>
+      {removed ? (
+        <Animated.View
+          key={removed.id}
+          entering={FadeInDown.duration(200)}
+          exiting={FadeOutDown.duration(200)}
+          style={styles.undoBar}>
+          <Ionicons name="trash-outline" size={16} color={C.textDim} />
+          <Text style={styles.undoText} numberOfLines={1}>
+            Removed {removed.name}
+          </Text>
+          <Pressable onPress={undoRemove} accessibilityRole="button" hitSlop={8} style={styles.undoButton}>
+            <Text style={styles.undoButtonText}>Undo</Text>
+          </Pressable>
+        </Animated.View>
+      ) : null}
+    </View>
   );
 }
 
@@ -278,25 +319,45 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EntryRow({ entry: e, thumb, last }: { entry: LogEntry; thumb: ThumbData; last: boolean }) {
+function EntryRow({
+  entry: e,
+  thumb,
+  last,
+  onRemove,
+}: {
+  entry: LogEntry;
+  thumb: ThumbData;
+  last: boolean;
+  onRemove: () => void;
+}) {
   return (
-    <ListRow
-      last={last}
-      onPress={() => router.push({ pathname: '/food/[ref]', params: { ref: e.ref, entry: String(e.id) } })}>
-      <FoodThumb item={thumb} size={38} radius={10} />
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={text.strong} numberOfLines={1}>
-          {e.name}
-        </Text>
-        <Text style={text.faint} numberOfLines={1}>
-          {[e.amount, e.brand].filter(Boolean).join(' · ')}
-        </Text>
-      </View>
-      <View style={{ alignItems: 'flex-end' }}>
-        <Text style={styles.kcal}>{Math.round(e.n.kcal ?? 0)} kcal</Text>
-        <Text style={text.faint}>{Math.round(e.n.protein ?? 0)} g protein</Text>
-      </View>
-    </ListRow>
+    <Animated.View layout={LinearTransition.duration(200)} exiting={FadeOut.duration(150)}>
+      <ListRow
+        last={last}
+        onPress={() => router.push({ pathname: '/food/[ref]', params: { ref: e.ref, entry: String(e.id) } })}>
+        <FoodThumb item={thumb} size={38} radius={10} />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={text.strong} numberOfLines={1}>
+            {e.name}
+          </Text>
+          <Text style={text.faint} numberOfLines={1}>
+            {[e.amount, e.brand].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.kcal}>{Math.round(e.n.kcal ?? 0)} kcal</Text>
+          <Text style={text.faint}>{Math.round(e.n.protein ?? 0)} g protein</Text>
+        </View>
+        <Pressable
+          onPress={onRemove}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${e.name}`}
+          style={({ pressed }) => [styles.removeEntry, pressed && { backgroundColor: C.cardHi }]}>
+          <Ionicons name="close" size={16} color={C.textFaint} />
+        </Pressable>
+      </ListRow>
+    </Animated.View>
   );
 }
 
@@ -335,6 +396,40 @@ const styles = StyleSheet.create({
     borderColor: C.accentLine,
   },
   copyLabel: { color: C.text, fontFamily: F.semi, fontSize: 12 },
+  removeEntry: {
+    width: 32,
+    height: 32,
+    marginRight: -6,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  undoBar: {
+    position: 'absolute',
+    left: S.lg,
+    right: S.lg,
+    bottom: S.lg,
+    alignSelf: 'center',
+    maxWidth: 480,
+    marginHorizontal: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    height: 48,
+    paddingLeft: S.md,
+    paddingRight: 6,
+    borderRadius: R.lg,
+    backgroundColor: C.cardHi,
+    borderWidth: 1,
+    borderColor: C.borderHi,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  undoText: { flex: 1, color: C.text, fontFamily: F.medium, fontSize: 13 },
+  undoButton: { height: 36, paddingHorizontal: S.md, borderRadius: R.md, justifyContent: 'center' },
+  undoButtonText: { color: C.accent, fontFamily: F.semi, fontSize: 14 },
   mealPhotoWrap: { marginBottom: S.sm },
   mealPhoto: { width: '100%', aspectRatio: 16 / 9, maxHeight: 220, borderRadius: R.lg, backgroundColor: C.cardHi },
   mealPhotoRemove: {

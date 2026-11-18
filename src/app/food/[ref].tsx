@@ -149,7 +149,8 @@ function FoodDetail({
     router.back();
   };
 
-  const stepGrams = (d: number) => setGramText(String(Math.max(5, Math.round(((parseNum(gramText) ?? 0) + d) / 5) * 5)));
+  const stepGrams = (d: number) =>
+    setGramText(String(Math.max(5, Math.round(((parseNum(gramText) ?? 0) + d) / 5) * 5)));
   const step = (d: number) => setCountText(String(Math.max(0.5, Math.round((count + d) * 2) / 2)));
   const src = SOURCE[item.source];
   const photo = photoSource(item);
@@ -241,21 +242,24 @@ function FoodDetail({
     </Card>
   );
 
-  const nutrition = (
-    <>
-      <Card style={styles.hero}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.kcal}>{Math.round(kcal)}</Text>
-          <Text style={text.faint}>kcal · {Math.round((100 * (n.kcal ?? 0)) / goals.kcal)}% of your goal</Text>
+  const hero = (
+    <Card style={styles.hero}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.kcal}>{Math.round(kcal)}</Text>
+        <Text style={text.faint}>kcal · {Math.round((100 * (n.kcal ?? 0)) / goals.kcal)}% of your goal</Text>
+      </View>
+      {(['protein', 'carbs', 'fat'] as const).map((k) => (
+        <View key={k} style={styles.macro}>
+          <View style={[styles.macroDot, { backgroundColor: MACRO_COLOR[k] }]} />
+          <Text style={styles.macroValue}>{fmtNutrient(k, n[k])}</Text>
+          <Text style={text.faint}>{NUTRIENTS[k].label}</Text>
         </View>
-        {(['protein', 'carbs', 'fat'] as const).map((k) => (
-          <View key={k} style={styles.macro}>
-            <View style={[styles.macroDot, { backgroundColor: MACRO_COLOR[k] }]} />
-            <Text style={styles.macroValue}>{fmtNutrient(k, n[k])}</Text>
-            <Text style={text.faint}>{NUTRIENTS[k].label}</Text>
-          </View>
-        ))}
-      </Card>
+      ))}
+    </Card>
+  );
+
+  const details = (
+    <>
       <SectionTitle title={`Nutrition for ${Math.round(grams)} g`} />
       <ListCard>
         {TABLE.map((r, i) => (
@@ -286,6 +290,20 @@ function FoodDetail({
     </>
   );
 
+  // Right under the amount, so you don't have to scroll past the nutrition table to log it.
+  const actions = (
+    <View style={styles.actions}>
+      {entry ? <Button label="Remove" icon="trash-outline" kind="danger" onPress={remove} /> : null}
+      <Button
+        label={entry ? 'Save' : `Add to ${mealLabel(meal)}`}
+        icon={entry ? 'checkmark' : 'add'}
+        kind="primary"
+        onPress={save}
+        style={[{ flex: 1 }, !valid && { opacity: 0.4 }]}
+      />
+    </View>
+  );
+
   const recipe = item.recipe ? (
     <>
       <SectionTitle
@@ -301,7 +319,10 @@ function FoodDetail({
         {item.recipe.ingredients.map((g, i) => (
           <ListRow key={`${g.ref}-${i}`} last={i === item.recipe!.ingredients.length - 1}>
             <Text style={[text.body, { flex: 1 }]}>{g.name}</Text>
-            <Text style={text.dim}>{g.note ? `${g.note} · ` : ''}{Math.round(g.g)} g</Text>
+            <Text style={text.dim}>
+              {g.note ? `${g.note} · ` : ''}
+              {Math.round(g.g)} g
+            </Text>
           </ListRow>
         ))}
       </ListCard>
@@ -334,93 +355,94 @@ function FoodDetail({
             ) : null,
         }}
       />
-      {photo ? (
-        <Animated.View entering={FadeIn.duration(300)} style={{ gap: 6 }}>
-          <Image
-            source={photo}
-            style={[styles.photo, desktop && styles.photoWide, isPackShot && styles.packShot]}
-            resizeMode={isPackShot ? 'contain' : 'cover'}
-          />
-          {credit}
-        </Animated.View>
-      ) : null}
-      <Animated.View entering={FadeIn.duration(250)} style={styles.titleRow}>
-        {!photo ? <FoodThumb item={item} size={64} radius={16} /> : null}
-        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <View style={styles.badges}>
-            <View style={styles.badge}>
-              <Ionicons name={src.icon} size={12} color={C.textDim} />
-              <Text style={styles.badgeText}>{SOURCE_NAME[item.source] ?? src.label}</Text>
-            </View>
-            {item.barcode ? <Text style={text.faint}>{item.barcode}</Text> : null}
-          </View>
-          <Text style={text.title}>{item.name}</Text>
-          {item.brand ? <Text style={text.dim}>{item.brand}</Text> : null}
-          {item.altName && item.altName !== item.name ? <Text style={text.dim}>{item.altName}</Text> : null}
-        </View>
-      </Animated.View>
-      {own ? (
-        <View style={styles.photoActions}>
-          <Button
-            small
-            icon="camera-outline"
-            label={item.image ? 'Change photo' : 'Add photo'}
-            onPress={async () => {
-              const img = await pickPhoto();
-              if (!img) return;
-              await setFoodImage(db, item.ref, img);
-              haptic.tap();
-              reload();
-            }}
-          />
-          {item.image?.startsWith('data:') ? (
-            <Button
-              small
-              kind="ghost"
-              icon="trash-outline"
-              label="Remove photo"
-              onPress={async () => {
-                await setFoodImage(db, item.ref, null);
-                reload();
-              }}
+      <View style={desktop && photo ? styles.headWide : { gap: S.md }}>
+        {photo ? (
+          <Animated.View entering={FadeIn.duration(300)} style={[{ gap: 6 }, desktop && styles.photoCol]}>
+            <Image
+              source={photo}
+              style={[styles.photo, isPackShot && styles.packShot]}
+              resizeMode={isPackShot ? 'contain' : 'cover'}
             />
+            {credit}
+          </Animated.View>
+        ) : null}
+        <View style={{ flex: desktop ? 1 : undefined, minWidth: 0, gap: S.md, alignSelf: 'stretch' }}>
+          <Animated.View entering={FadeIn.duration(250)} style={styles.titleRow}>
+            {!photo ? <FoodThumb item={item} size={64} radius={16} /> : null}
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              <View style={styles.badges}>
+                <View style={styles.badge}>
+                  <Ionicons name={src.icon} size={12} color={C.textDim} />
+                  <Text style={styles.badgeText}>{SOURCE_NAME[item.source] ?? src.label}</Text>
+                </View>
+                {item.barcode ? <Text style={text.faint}>{item.barcode}</Text> : null}
+              </View>
+              <Text style={text.title}>{item.name}</Text>
+              {item.brand ? <Text style={text.dim}>{item.brand}</Text> : null}
+              {item.altName && item.altName !== item.name ? <Text style={text.dim}>{item.altName}</Text> : null}
+            </View>
+          </Animated.View>
+          {own ? (
+            <View style={styles.photoActions}>
+              <Button
+                small
+                icon="camera-outline"
+                label={item.image ? 'Change photo' : 'Add photo'}
+                onPress={async () => {
+                  const img = await pickPhoto();
+                  if (!img) return;
+                  await setFoodImage(db, item.ref, img);
+                  haptic.tap();
+                  reload();
+                }}
+              />
+              {item.image?.startsWith('data:') ? (
+                <Button
+                  small
+                  kind="ghost"
+                  icon="trash-outline"
+                  label="Remove photo"
+                  onPress={async () => {
+                    await setFoodImage(db, item.ref, null);
+                    reload();
+                  }}
+                />
+              ) : null}
+            </View>
           ) : null}
+          {desktop && photo ? <View style={{ marginTop: 'auto' }}>{hero}</View> : null}
         </View>
-      ) : null}
+      </View>
 
       {desktop ? (
         <View style={styles.columns}>
           <View style={{ flex: 1, minWidth: 0, gap: S.sm }}>
             {amount}
+            {actions}
             {recipe}
           </View>
-          <View style={{ flex: 1, minWidth: 0, gap: S.sm }}>{nutrition}</View>
+          <View style={{ flex: 1, minWidth: 0, gap: S.sm }}>
+            {photo ? null : hero}
+            {details}
+          </View>
         </View>
       ) : (
         <>
           {amount}
-          {nutrition}
+          {actions}
+          {hero}
           {recipe}
+          {details}
         </>
       )}
-
-      <View style={styles.actions}>
-        {entry ? <Button label="Remove" icon="trash-outline" kind="danger" onPress={remove} /> : null}
-        <Button
-          label={entry ? 'Save' : `Add to ${mealLabel(meal)}`}
-          icon={entry ? 'checkmark' : 'add'}
-          kind="primary"
-          onPress={save}
-          style={[{ flex: 1 }, !valid && { opacity: 0.4 }]}
-        />
-      </View>
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
   photo: { width: '100%', aspectRatio: 4 / 3, maxHeight: 300, borderRadius: R.lg, backgroundColor: C.cardHi },
-  photoWide: { aspectRatio: 16 / 7, maxHeight: 320 },
+  headWide: { flexDirection: 'row', alignItems: 'flex-start', gap: S.xl },
+  photoCol: { width: 420 },
   packShot: { backgroundColor: '#F4F6F7' },
   credit: { color: C.textFaint, fontFamily: F.regular, fontSize: 11 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
@@ -474,7 +496,14 @@ const styles = StyleSheet.create({
   macroDot: { width: 8, height: 8, borderRadius: 4, marginBottom: 2 },
   macroValue: { color: C.text, fontFamily: F.semi, fontSize: 14, fontVariant: ['tabular-nums'] },
   cell: { color: C.text, fontFamily: F.medium, fontSize: 13, fontVariant: ['tabular-nums'] },
-  per100: { width: 72, textAlign: 'right', color: C.textFaint, fontFamily: F.regular, fontSize: 12, fontVariant: ['tabular-nums'] },
+  per100: {
+    width: 72,
+    textAlign: 'right',
+    color: C.textFaint,
+    fontFamily: F.regular,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
   stepRow: { flexDirection: 'row', gap: S.md, alignItems: 'flex-start' },
   stepNum: {
     width: 24,
@@ -487,5 +516,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepNumText: { color: C.accent, fontFamily: F.semi, fontSize: 12 },
-  actions: { flexDirection: 'row', gap: S.sm, marginTop: S.lg },
+  actions: { flexDirection: 'row', gap: S.sm, marginBottom: S.sm },
 });

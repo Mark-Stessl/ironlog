@@ -16,6 +16,7 @@ import {
   getSetting,
   latestMeasurements,
   listExercises,
+  listMeasurements,
   listRestDays,
   profileTotals,
   setSetting,
@@ -24,7 +25,9 @@ import {
   workoutsBetween,
 } from '@/lib/db';
 import { fmtMeasure, WEIGHT } from '@/lib/measures';
+import { dailyTotals, getGoals, waterBetween } from '@/lib/food-db';
 import { fmtDurationShort, fmtVolume } from '@/lib/format';
+import { nutritionSummary, weightChange } from '@/lib/overview';
 import { GROUPS, heat, muscleStats, periodRange, type Period } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
@@ -39,15 +42,33 @@ export default function ProfileTab() {
   const desktop = useIsDesktop();
   const [period, setPeriod] = useState<Period>('month');
   const range = periodRange(period);
+  const periodName = range.label.toLowerCase().startsWith('this') ? range.label.toLowerCase() : range.label;
 
   const [data] = useFocusData(async (db) => {
-    const [cur, prev, time, prevTime] = await Promise.all([
+    const days = { from: dayKey(range.from), to: dayKey(range.to) };
+    const prevDays = { from: dayKey(range.prevFrom), to: dayKey(range.from - 1) };
+    const [cur, prev, time, prevTime, food, prevFood, water, prevWater, goals, weights] = await Promise.all([
       statSets(db, range.from, range.to + 1),
       statSets(db, range.prevFrom, range.from),
       trainingTime(db, range.from, range.to + 1),
       trainingTime(db, range.prevFrom, range.from),
+      dailyTotals(db, days.from, days.to),
+      dailyTotals(db, prevDays.from, prevDays.to),
+      waterBetween(db, days.from, days.to),
+      waterBetween(db, prevDays.from, prevDays.to),
+      getGoals(db),
+      listMeasurements(db, WEIGHT.key),
     ]);
-    return { now: muscleStats(cur), before: muscleStats(prev), time, prevTime };
+    return {
+      now: muscleStats(cur),
+      before: muscleStats(prev),
+      time,
+      prevTime,
+      eat: nutritionSummary(food, water, goals),
+      eatBefore: nutritionSummary(prevFood, prevWater, goals),
+      weight: weightChange(weights, range.from, range.to + 1),
+      weightBefore: weightChange(weights, range.prevFrom, range.from),
+    };
   }, period);
 
   const [profile] = useFocusData(async (db) => {
@@ -118,10 +139,80 @@ export default function ProfileTab() {
         </Animated.View>
       ) : null}
 
+      {data ? (
+        <Animated.View key={`eat-${period}`} entering={FadeInDown.delay(60).duration(300)} style={{ gap: S.sm }}>
+          <SectionTitle
+            title="Eating and body"
+            right={
+              <Text style={text.faint}>
+                {data.eat.days
+                  ? `${data.eat.days} ${data.eat.days === 1 ? 'day' : 'days'} logged`
+                  : 'Nothing logged yet'}
+              </Text>
+            }
+          />
+          <View style={styles.summary}>
+            <Summary
+              label="Calories per day"
+              noPrev={data.eatBefore.days ? undefined : `Nothing logged in ${range.prevLabel}`}
+              value={data.eat.kcal}
+              prev={data.eatBefore.kcal}
+              format={(n) => `${Math.round(n).toLocaleString('en-US')} kcal`}
+              neutral
+            />
+            <Summary
+              label="Protein per day"
+              noPrev={data.eatBefore.days ? undefined : `Nothing logged in ${range.prevLabel}`}
+              value={data.eat.protein}
+              prev={data.eatBefore.protein}
+              format={(n) => `${Math.round(n)} g`}
+            />
+            <Summary
+              label="Days on calorie goal"
+              noPrev={data.eatBefore.days ? undefined : `Nothing logged in ${range.prevLabel}`}
+              value={data.eat.onTarget}
+              prev={data.eatBefore.onTarget}
+              suffix={data.eat.days ? ` / ${data.eat.days}` : undefined}
+            />
+            <Summary
+              label="Days on protein goal"
+              noPrev={data.eatBefore.days ? undefined : `Nothing logged in ${range.prevLabel}`}
+              value={data.eat.proteinDays}
+              prev={data.eatBefore.proteinDays}
+              suffix={data.eat.days ? ` / ${data.eat.days}` : undefined}
+            />
+            <Summary
+              label="Water per day"
+              noPrev={data.eatBefore.waterMl ? undefined : `No water logged in ${range.prevLabel}`}
+              value={data.eat.waterMl}
+              prev={data.eatBefore.waterMl}
+              format={(n) => `${(n / 1000).toFixed(1)} L`}
+            />
+            <View style={styles.summaryCard}>
+              <Text style={text.faint}>Weight</Text>
+              <Text style={styles.summaryValue}>
+                {data.weight
+                  ? fmtMeasure(data.weight.now, 'kg')
+                  : profile?.weight != null
+                    ? fmtMeasure(profile.weight, 'kg')
+                    : '–'}
+              </Text>
+              <Text style={[styles.delta, { color: C.textDim }]} numberOfLines={1}>
+                {data.weight
+                  ? data.weight.change === 0
+                    ? `No change in ${periodName}`
+                    : `${data.weight.change > 0 ? '▲' : '▼'} ${Math.abs(data.weight.change).toFixed(1)} kg in ${periodName}`
+                  : 'Weigh in twice for a trend'}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+      ) : null}
+
       {empty ? (
         <Empty
           icon="stats-chart-outline"
-          title={`No workouts in ${range.label.toLowerCase().startsWith('this') ? range.label.toLowerCase() : range.label} yet`}
+          title={`No workouts in ${periodName} yet`}
           hint="Finish a workout and your muscle distribution shows up here."
         />
       ) : now && before ? (
@@ -262,20 +353,31 @@ function Summary({
   value,
   prev,
   format = (n) => String(Math.round(n)),
+  suffix,
+  neutral,
+  noPrev,
 }: {
   label: string;
   value: number;
   prev: number;
   format?: (n: number) => string;
+  /** Text after the number, e.g. " / 12". */
+  suffix?: string;
+  /** More isn't better (calories): don't color an increase green. */
+  neutral?: boolean;
+  /** Shown instead of the comparison when the previous period has no data. */
+  noPrev?: string;
 }) {
   const diff = format(value) === format(prev) ? 0 : value - prev;
   const up = diff > 0;
   return (
     <View style={styles.summaryCard}>
       <Text style={text.faint}>{label}</Text>
-      <CountUp value={value} format={format} style={styles.summaryValue} />
-      <Text style={[styles.delta, { color: diff === 0 ? C.textFaint : up ? C.good : C.textDim }]} numberOfLines={1}>
-        {diff === 0 ? 'Same as before' : `${up ? '▲' : '▼'} ${format(Math.abs(diff))}`}
+      <CountUp value={value} format={suffix ? (n) => format(n) + suffix : format} style={styles.summaryValue} />
+      <Text
+        style={[styles.delta, { color: diff === 0 || noPrev ? C.textFaint : up && !neutral ? C.good : C.textDim }]}
+        numberOfLines={1}>
+        {noPrev ?? (diff === 0 ? 'Same as before' : `${up ? '▲' : '▼'} ${format(Math.abs(diff))}`)}
       </Text>
     </View>
   );
