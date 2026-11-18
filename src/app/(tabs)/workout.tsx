@@ -9,7 +9,7 @@ import { Elapsed } from '@/components/elapsed';
 import { SoundToggle } from '@/components/sound-toggle';
 import { greeting, motivation } from '@/lib/greeting';
 import { WeekStrip, startOfWeek } from '@/components/week-strip';
-import { Button, Empty, Page, PageHeader, SectionTitle, Stat, text } from '@/components/ui';
+import { Button, Empty, Page, PageHeader, SectionTitle, text } from '@/components/ui';
 import {
   createRoutine,
   getActiveWorkout,
@@ -19,7 +19,7 @@ import {
   startWorkout,
 } from '@/lib/db';
 import { confirm } from '@/lib/dialog';
-import { fmtVolume, plural } from '@/lib/format';
+import { plural } from '@/lib/format';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -68,12 +68,6 @@ export default function WorkoutTab() {
       />
 
       <WeekStrip finishedAt={finishedAt} restDays={data?.rest} />
-
-      <View style={styles.weekRow}>
-        <Stat label="This week" value={`${week.length} ${week.length === 1 ? 'workout' : 'workouts'}`} />
-        <Stat label="Volume" value={fmtVolume(week.reduce((s, w) => s + w.volume, 0))} />
-        <Stat label="Sets" value={String(week.reduce((s, w) => s + w.set_count, 0))} />
-      </View>
 
       {active ? (
         <Pressable
@@ -150,7 +144,6 @@ export default function WorkoutTab() {
 }
 
 const styles = StyleSheet.create({
-  weekRow: { flexDirection: 'row', gap: 28, marginTop: S.sm, marginBottom: S.sm },
   live: {
     flexDirection: 'row',
     alignItems: 'center',
