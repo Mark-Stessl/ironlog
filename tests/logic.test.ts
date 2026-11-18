@@ -781,3 +781,24 @@ test('weight trend: smoothing, rate and real maintenance calories', async () => 
   const r2 = trendRate(weightTrend(weekly))!;
   assert.ok(r2.kgPerWeek < -0.3 && r2.kgPerWeek > -0.7, `weekly rate ${r2.kgPerWeek}`);
 });
+
+test('calendar: best streak and workout sets and volume per day', async () => {
+  const { bestStreak } = await import('../src/lib/calendar');
+  assert.equal(bestStreak(new Set()), 0);
+  assert.equal(bestStreak(new Set(['2026-10-30', '2026-10-31', '2026-11-01', '2026-11-03'])), 3); // across months
+  assert.equal(bestStreak(new Set(['2026-11-05'])), 1);
+
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const id = await dbm.startWorkout(db);
+  const ex = (await dbm.listExercises(db))[0];
+  await dbm.addExerciseToWorkout(db, id, ex.id);
+  const we = await db.getFirstAsync('SELECT id FROM workout_exercises WHERE workout_id = ?', id);
+  await dbm.addSet(db, we.id);
+  const sets = await db.getAllAsync('SELECT id FROM sets WHERE workout_exercise_id = ?', we.id);
+  await db.runAsync('UPDATE sets SET weight = 60, reps = 10, done = 1 WHERE id = ?', sets[0].id);
+  await dbm.finishWorkout(db, id);
+  const [w] = await dbm.workoutsBetween(db, 0, Date.now() + 1000);
+  assert.equal(w.sets, 1);
+  assert.equal(w.volume, 600);
+});

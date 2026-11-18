@@ -61,6 +61,18 @@ export function dayStreak(done: Set<string>, now = Date.now()): number {
   return streak;
 }
 
+/** The longest run of consecutive days in `done` (workouts and rest days). */
+export function bestStreak(done: Set<string>): number {
+  let best = 0;
+  for (const day of done) {
+    if (done.has(addDays(day, -1))) continue; // not the start of a run
+    let n = 1;
+    while (done.has(addDays(day, n))) n++;
+    best = Math.max(best, n);
+  }
+  return best;
+}
+
 /** The day key `n` days after (or before, if negative) `key`. */
 export function addDays(key: string, n: number): string {
   const d = new Date(dayStart(key));

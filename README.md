@@ -27,7 +27,7 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Workout complete screen** with your records, counting-up stats, which workout number it was and a body heatmap of the muscles you trained
 - **Profile** with your name, total workouts since you started, total volume and sets, and shortcuts to the exercise library, calendar and measures
 - **Statistics** (on the profile) per week, month or year: totals compared with the previous period, a muscle distribution chart (Chest, Back, Shoulders, Arms, Legs, Core) and a body heatmap with sets per muscle
-- **Calendar** of the days you trained; days without a workout can be marked as rest days, which keep your day streak going and show as a moon on the home screen
+- **Calendar** of the days you trained; days without a workout can be marked as rest days, which keep your day streak going and show as a moon on the home screen. Each day also shows a food dot (on calorie goal, over or under); tapping a day shows its workouts (time, sets, volume), food (calories, protein, water, with a link to that day) and weight. Month stats include training time, best streak and days on goal; a year view shows all 12 months
 - **Measures**: body weight with a chart and history, plus optional body fat and body measurements (neck, chest, arms, waist, thighs, ...)
 - **Weight trend**: a smoothed trend line (exponential moving average, 10 % a day) under the daily scale readings, with kg per week
 - **Calorie check**: compares the last 28 days of weight trend with what you logged, estimates the calories you really burn (1 kg ≈ 7,700 kcal) and suggests a goal that fits your aim

@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -52,6 +52,11 @@ export default function FoodTab() {
   const desktop = useIsDesktop();
   const today = dayKey(Date.now());
   const [day, setDay] = useState(today);
+  // The calendar opens a specific day with /food?day=2026-11-12.
+  const params = useLocalSearchParams<{ day?: string }>();
+  useEffect(() => {
+    if (params.day && /^\d{4}-\d{2}-\d{2}$/.test(params.day) && params.day <= today) setDay(params.day);
+  }, [params.day, today]);
 
   const [data, reload] = useFocusData(async (d) => {
     const from = addDays(day, -6);

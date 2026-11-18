@@ -764,12 +764,22 @@ export type CalendarWorkout = {
   name: string;
   started_at: number;
   finished_at: number;
+  /** Ticked sets and their volume (kg × reps). */
+  sets: number;
+  volume: number;
 };
 
 /** Finished workouts that started between two times. */
 export function workoutsBetween(db: SQLiteDatabase, from: number, to: number): Promise<CalendarWorkout[]> {
   return db.getAllAsync<CalendarWorkout>(
-    'SELECT id, name, started_at, finished_at FROM workouts WHERE finished_at IS NOT NULL AND started_at >= ? AND started_at < ? ORDER BY started_at',
+    `SELECT w.id, w.name, w.started_at, w.finished_at,
+            COUNT(s.id) AS sets, COALESCE(SUM(COALESCE(s.weight, 0) * COALESCE(s.reps, 0)), 0) AS volume
+     FROM workouts w
+     LEFT JOIN workout_exercises we ON we.workout_id = w.id
+     LEFT JOIN sets s ON s.workout_exercise_id = we.id AND s.done = 1
+     WHERE w.finished_at IS NOT NULL AND w.started_at >= ? AND w.started_at < ?
+     GROUP BY w.id
+     ORDER BY w.started_at`,
     from,
     to,
   );
