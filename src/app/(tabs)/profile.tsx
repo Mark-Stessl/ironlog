@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, type PressableStateCallbackType } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -253,6 +253,7 @@ function ProfileHead({ name: saved, first }: { name: string; first: number | nul
   const [name, setName] = useState(saved);
   const [focused, setFocused] = useState(false);
   const [textWidth, setTextWidth] = useState(0);
+  const input = useRef<React.ComponentRef<typeof TextInput>>(null);
   useEffect(() => setName(saved), [saved]);
   const save = () => setSetting(db, 'profile_name', name.trim());
   const initial = (name.trim()[0] ?? '').toUpperCase();
@@ -274,12 +275,14 @@ function ProfileHead({ name: saved, first }: { name: string; first: number | nul
           {/* Invisible copy of the name to size the field, so the pencil sits right after it. */}
           <Text
             style={[styles.name, styles.measure]}
+            pointerEvents="none"
             onLayout={(e) => setTextWidth(e.nativeEvent.layout.width)}
             accessibilityElementsHidden
             importantForAccessibility="no-hide-descendants">
             {name || 'Your name'}
           </Text>
           <TextInput
+            ref={input}
             value={name}
             onChangeText={setName}
             onFocus={() => setFocused(true)}
@@ -295,7 +298,11 @@ function ProfileHead({ name: saved, first }: { name: string; first: number | nul
             accessibilityLabel="Your name"
             style={[styles.name, textWidth ? { width: textWidth + 6 } : null]}
           />
-          {!focused ? <Ionicons name="pencil" size={13} color={C.textFaint} /> : null}
+          {!focused ? (
+            <Pressable onPress={() => input.current?.focus()} hitSlop={12} accessibilityLabel="Edit your name">
+              <Ionicons name="pencil" size={14} color={C.textDim} />
+            </Pressable>
+          ) : null}
         </View>
         <Text style={text.dim}>{since}</Text>
       </View>
@@ -408,7 +415,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     maxWidth: '100%',
   },
-  measure: { position: 'absolute', opacity: 0, left: 0, top: 0 },
+  // Invisible copy of the name used to size the field: it must never catch taps meant for the field.
+  measure: { position: 'absolute', opacity: 0, left: 0, top: 0, zIndex: -1, pointerEvents: 'none' },
   nameWrapFocused: { borderBottomColor: C.accentLine },
   name: {
     color: C.text,

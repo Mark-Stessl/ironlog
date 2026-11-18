@@ -1,6 +1,6 @@
 import { Redirect } from 'expo-router';
 
-/** The History tab became Overview; old links and home-screen bookmarks still work. */
+/** The History tab became Overview; old links and home-screen bookmarks still work (Overview is the start page). */
 export default function HistoryRedirect() {
-  return <Redirect href="/overview" />;
+  return <Redirect href="/" />;
 }

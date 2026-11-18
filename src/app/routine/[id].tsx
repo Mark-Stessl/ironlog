@@ -75,7 +75,7 @@ function RoutineEditor({
     await renameRoutine(db, routine.id, name);
     haptic.success();
     if (router.canGoBack()) router.back();
-    else router.replace('/');
+    else router.replace('/workout');
   };
 
   const start = async () => {

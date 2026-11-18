@@ -1,185 +1,241 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router, type Href } from 'expo-router';
+import { Fragment } from 'react';
 import { Pressable, StyleSheet, Text, View, type PressableStateCallbackType } from 'react-native';
-
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { Elapsed } from '@/components/elapsed';
-import { SoundToggle } from '@/components/sound-toggle';
+import { ProgressChart } from '@/components/progress-chart';
+import { Card, Empty, ListCard, ListRow, Page, SectionTitle, text, type IconName } from '@/components/ui';
+import { dayKey, dayStreak } from '@/lib/calendar';
+import { getSetting, listFinishedWorkouts, listRestDays } from '@/lib/db';
+import { dailyTotals, dayWater, getGoals } from '@/lib/food-db';
+import { fmtDate, fmtDurationShort, fmtVolume } from '@/lib/format';
 import { greeting, motivation } from '@/lib/greeting';
-import { WeekStrip, startOfWeek } from '@/components/week-strip';
-import { Button, Empty, Page, PageHeader, SectionTitle, Stat, text } from '@/components/ui';
-import {
-  createRoutine,
-  getActiveWorkout,
-  listFinishedWorkouts,
-  listRestDays,
-  listRoutines,
-  startWorkout,
-} from '@/lib/db';
-import { confirm } from '@/lib/dialog';
-import { fmtVolume, plural } from '@/lib/format';
+import { weeklyTotals, weekStart } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
-export default function WorkoutTab() {
-  const db = useSQLiteContext();
+/** The start page: a welcome, this week at a glance, training progress and the workout history. */
+export default function OverviewTab() {
   const desktop = useIsDesktop();
-  const [data] = useFocusData(async (d) => ({
-    active: await getActiveWorkout(d),
-    routines: await listRoutines(d),
-    finished: await listFinishedWorkouts(d),
-    rest: await listRestDays(d),
-  }));
-  const active = data?.active ?? null;
-  const routines = data?.routines ?? [];
-  const finishedAt = (data?.finished ?? []).map((w) => w.finished_at ?? w.started_at);
-  const week = (data?.finished ?? []).filter((w) => (w.finished_at ?? 0) >= startOfWeek(Date.now()));
+  const [data] = useFocusData(async (db) => {
+    const today = dayKey(Date.now());
+    const [name, workouts, rest, food, water, goals] = await Promise.all([
+      getSetting(db, 'profile_name', ''),
+      listFinishedWorkouts(db),
+      listRestDays(db),
+      dailyTotals(db, today, today),
+      dayWater(db, today),
+      getGoals(db),
+    ]);
+    return { name: name.trim(), workouts, rest, kcal: food.get(today)?.kcal ?? 0, water, goals };
+  });
 
-  const open = (id: number) => router.push({ pathname: '/workout/[id]', params: { id: String(id) } });
+  const workouts = data?.workouts ?? [];
+  const thisWeek = workouts.filter((w) => w.started_at >= weekStart(Date.now())).length;
+  const streak = dayStreak(new Set([...workouts.map((w) => dayKey(w.started_at)), ...(data?.rest ?? [])]));
+  const weeks = weeklyTotals(workouts, 12);
+  const first = (data?.name ?? '').split(' ')[0];
 
-  const start = async (routineId?: number) => {
-    if (active) {
-      const resume = await confirm({
-        title: 'Workout in progress',
-        message: `Finish or discard "${active.name}" before starting a new one. Resume it now?`,
-        confirmLabel: 'Resume',
-      });
-      if (resume) open(active.id);
-      return;
-    }
-    open(await startWorkout(db, routineId));
-  };
+  // History grouped by month: "November 2026 · 8 workouts".
+  const groups: { label: string; items: typeof workouts }[] = [];
+  for (const w of workouts) {
+    const label = new Date(w.started_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const g = groups[groups.length - 1];
+    if (g?.label === label) g.items.push(w);
+    else groups.push({ label, items: [w] });
+  }
 
-  const newRoutine = async () => {
-    const id = await createRoutine(db, 'New routine');
-    router.push({ pathname: '/routine/[id]', params: { id: String(id) } });
-  };
+  const welcome = (
+    <View style={styles.welcome}>
+      <LinearGradient colors={['#22D3EE', '#0E7490']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
+        {first ? (
+          <Text style={styles.avatarText}>{first[0].toUpperCase()}</Text>
+        ) : (
+          <Ionicons name="person" size={22} color={C.onAccent} />
+        )}
+      </LinearGradient>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={text.title} numberOfLines={1}>
+          {greeting()}
+          {first ? `, ${first}` : ''}
+        </Text>
+        <Text style={text.dim}>{motivation(thisWeek)}</Text>
+      </View>
+    </View>
+  );
+
+  const glance = data ? (
+    <View style={styles.glance}>
+      <Glance
+        icon="barbell"
+        color={C.accent}
+        value={String(thisWeek)}
+        label={thisWeek === 1 ? 'workout this week' : 'workouts this week'}
+        href="/workout"
+      />
+      <Glance
+        icon="flame"
+        color={C.gold}
+        value={String(streak)}
+        label={streak === 1 ? 'day streak' : 'day streak'}
+        href="/calendar"
+      />
+      <Glance
+        icon="nutrition"
+        color={C.good}
+        value={Math.round(data.kcal).toLocaleString('en-US')}
+        label={`of ${data.goals.kcal.toLocaleString('en-US')} kcal today`}
+        href="/food"
+      />
+      <Glance
+        icon="water"
+        color="#5EE3F7"
+        value={`${(data.water / 1000).toFixed(1)} L`}
+        label={`of ${(data.goals.waterMl / 1000).toFixed(1)} L water`}
+        href="/food"
+      />
+    </View>
+  ) : null;
+
+  const progress = (
+    <View>
+      <SectionTitle title="Progress" />
+      <Card>
+        {workouts.length ? (
+          <ProgressChart weeks={weeks} />
+        ) : (
+          <Text style={text.dim}>Finish a workout and your weekly volume, sets and time show up here.</Text>
+        )}
+      </Card>
+    </View>
+  );
+
+  const history = (
+    <View>
+      <SectionTitle title="History" right={<Text style={text.faint}>{workouts.length} workouts</Text>} />
+      {data && !workouts.length ? (
+        <Empty icon="time-outline" title="No workouts yet" hint="Finished workouts show up here." />
+      ) : (
+        <Animated.View entering={FadeInDown.duration(300)} style={{ gap: S.sm }}>
+          {groups.map((g) => (
+            <Fragment key={g.label}>
+              <Text style={[text.label, { marginTop: S.xs }]}>
+                {g.label} · {g.items.length}
+              </Text>
+              <ListCard>
+                {g.items.map((w, i) => {
+                  const end = w.finished_at ?? w.started_at;
+                  return (
+                    <ListRow
+                      key={w.id}
+                      last={i === g.items.length - 1}
+                      onPress={() => router.push({ pathname: '/workout/[id]', params: { id: String(w.id) } })}
+                      style={{ alignItems: 'flex-start', paddingVertical: S.md }}>
+                      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: S.sm }}>
+                          <Text style={[text.strong, { flexShrink: 1 }]} numberOfLines={1}>
+                            {w.name}
+                          </Text>
+                          <Text style={text.faint}>{fmtDate(end)}</Text>
+                        </View>
+                        {w.exercise_names ? (
+                          <Text style={text.faint} numberOfLines={1}>
+                            {w.exercise_names}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <View style={{ alignItems: 'flex-end', gap: 3 }}>
+                        <Text style={[text.dim, { color: C.text, fontVariant: ['tabular-nums'] }]}>
+                          {fmtVolume(w.volume)}
+                        </Text>
+                        <Text style={text.faint}>
+                          {fmtDurationShort(end - w.started_at)} · {w.set_count} sets
+                        </Text>
+                      </View>
+                    </ListRow>
+                  );
+                })}
+              </ListCard>
+            </Fragment>
+          ))}
+        </Animated.View>
+      )}
+    </View>
+  );
 
   return (
-    <Page maxWidth={960} topInset>
-      <PageHeader
-        title={greeting()}
-        sub={week.length ? motivation(week.length) : 'Ready when you are.'}
-        right={<SoundToggle framed size={24} />}
-      />
-
-      <WeekStrip finishedAt={finishedAt} restDays={data?.rest} />
-
-      <View style={styles.weekRow}>
-        <Stat label="This week" value={`${week.length} ${week.length === 1 ? 'workout' : 'workouts'}`} />
-        <Stat label="Volume" value={fmtVolume(week.reduce((s, w) => s + w.volume, 0))} />
-        <Stat label="Sets" value={String(week.reduce((s, w) => s + w.set_count, 0))} />
-      </View>
-
-      {active ? (
-        <Pressable
-          onPress={() => open(active.id)}
-          accessibilityRole="button"
-          style={(s: PressState) => [styles.live, s.hovered && { borderColor: C.good }]}>
-          <View style={styles.liveDot} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={text.strong} numberOfLines={1}>
-              {active.name}
-            </Text>
-            <Text style={text.faint}>In progress</Text>
-          </View>
-          <Elapsed since={active.started_at} style={[text.num, { fontSize: 14 }]} />
-          <Ionicons name="chevron-forward" size={16} color={C.textDim} />
-        </Pressable>
-      ) : (
-        <Button
-          label="Start empty workout"
-          icon="add"
-          kind="primary"
-          onPress={() => start()}
-          style={desktop ? { alignSelf: 'flex-start' } : undefined}
-        />
-      )}
-
-      <SectionTitle
-        title={`Routines${routines.length ? ` · ${routines.length}` : ''}`}
-        right={<Button label="New routine" icon="add" kind="ghost" small onPress={newRoutine} />}
-      />
-
-      {data && routines.length === 0 ? (
-        <Empty
-          icon="list-outline"
-          title="No routines yet"
-          hint='Create one like "Push day", or save a finished workout as a routine.'
-        />
-      ) : (
-        <View style={styles.grid}>
-          {routines.map((r, i) => (
-            <Animated.View
-              key={r.id}
-              entering={FadeInDown.delay(i * 60).duration(300)}
-              style={desktop ? styles.routineDesktop : { width: '100%' }}>
-              <Pressable
-                onPress={() => router.push({ pathname: '/routine/[id]', params: { id: String(r.id) } })}
-                style={(s: PressState) => [styles.routine, s.hovered && { borderColor: C.borderHi }]}>
-                <View style={{ gap: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
-                    <Text style={[text.h2, { flex: 1 }]} numberOfLines={1}>
-                      {r.name}
-                    </Text>
-                    <Ionicons name="create-outline" size={15} color={C.textFaint} />
-                  </View>
-                  <Text style={text.faint} numberOfLines={2}>
-                    {r.exercise_names ?? 'No exercises yet'}
-                  </Text>
-                </View>
-                <View style={styles.routineFoot}>
-                  <Text style={text.faint}>{plural(r.exercise_count, 'exercise')}</Text>
-                  {r.exercise_count > 0 ? (
-                    <Button label="Start workout" icon="play" kind="primary" small onPress={() => start(r.id)} />
-                  ) : (
-                    <Text style={[text.faint, { color: C.accent }]}>Tap to add exercises</Text>
-                  )}
-                </View>
-              </Pressable>
-            </Animated.View>
-          ))}
+    <Page topInset maxWidth={1100}>
+      {welcome}
+      {glance}
+      {desktop ? (
+        <View style={styles.columns}>
+          <View style={{ flex: 1, minWidth: 0 }}>{progress}</View>
+          <View style={{ flex: 1, minWidth: 0 }}>{history}</View>
         </View>
+      ) : (
+        <>
+          {progress}
+          {history}
+        </>
       )}
     </Page>
   );
 }
 
+function Glance({
+  icon,
+  color,
+  value,
+  label,
+  href,
+}: {
+  icon: IconName;
+  color: string;
+  value: string;
+  label: string;
+  href: Href;
+}) {
+  return (
+    <Pressable
+      onPress={() => router.navigate(href)}
+      accessibilityRole="link"
+      accessibilityLabel={`${value} ${label}`}
+      style={(s: PressState) => [
+        styles.glanceCard,
+        s.hovered && { borderColor: C.accentLine },
+        s.pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
+      ]}>
+      <Ionicons name={icon} size={15} color={color} />
+      <Text style={styles.glanceValue} numberOfLines={1}>
+        {value}
+      </Text>
+      <Text style={text.faint} numberOfLines={2}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  weekRow: { flexDirection: 'row', gap: 28, marginTop: S.sm, marginBottom: S.sm },
-  live: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: S.md,
-    paddingVertical: 10,
-    paddingHorizontal: S.md,
-    borderRadius: R.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(52, 199, 123, 0.35)',
-    backgroundColor: C.goodDim,
-  },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.good },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: S.lg },
-  routine: {
-    width: '100%',
-    gap: S.md,
-    padding: S.lg,
+  welcome: { flexDirection: 'row', alignItems: 'center', gap: S.md, marginTop: S.xs },
+  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: C.onAccent, fontFamily: F.display, fontSize: 22 },
+  glance: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
+  glanceCard: {
+    flexGrow: 1,
+    flexBasis: '22%',
+    minWidth: 140,
+    gap: 2,
+    padding: S.md,
     borderRadius: R.lg,
     borderWidth: 1,
     borderColor: C.border,
     backgroundColor: C.card,
   },
-  routineDesktop: { flexBasis: '45%', flexGrow: 1 },
-  routineFoot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: S.md,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
+  glanceValue: { color: C.text, fontFamily: F.display, fontSize: 22, letterSpacing: -0.4, marginTop: 4 },
+  columns: { flexDirection: 'row', alignItems: 'flex-start', gap: S.xl },
 });

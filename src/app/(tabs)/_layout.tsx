@@ -22,6 +22,13 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
+          title: 'Overview',
+          tabBarIcon: ({ color }) => <Ionicons name="grid-outline" size={19} color={color as string} />,
+        }}
+      />
+      <Tabs.Screen
+        name="workout"
+        options={{
           title: 'Workout',
           tabBarIcon: ({ color }) => <Ionicons name="barbell-outline" size={20} color={color as string} />,
         }}
@@ -31,13 +38,6 @@ export default function TabsLayout() {
         options={{
           title: 'Food',
           tabBarIcon: ({ color }) => <Ionicons name="nutrition-outline" size={20} color={color as string} />,
-        }}
-      />
-      <Tabs.Screen
-        name="overview"
-        options={{
-          title: 'Overview',
-          tabBarIcon: ({ color }) => <Ionicons name="grid-outline" size={19} color={color as string} />,
         }}
       />
       <Tabs.Screen

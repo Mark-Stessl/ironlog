@@ -15,14 +15,15 @@ type PressState = PressableStateCallbackType & { hovered?: boolean };
 const NAV: {
   label: string;
   icon: IconName;
-  href: '/' | '/food' | '/recipes' | '/overview' | '/profile';
+  href: '/' | '/workout' | '/food' | '/recipes' | '/profile';
   match: (p: string) => boolean;
 }[] = [
+  { label: 'Overview', icon: 'grid-outline', href: '/', match: (p) => p === '/' || p.startsWith('/overview') },
   {
     label: 'Workout',
     icon: 'barbell-outline',
-    href: '/',
-    match: (p) => p === '/' || p.startsWith('/workout') || p.startsWith('/routine'),
+    href: '/workout',
+    match: (p) => p.startsWith('/workout') || p.startsWith('/routine'),
   },
   {
     label: 'Food',
@@ -39,7 +40,6 @@ const NAV: {
     href: '/recipes',
     match: (p) => p.startsWith('/recipes') || p.startsWith('/food/r:') || p.startsWith('/food/u:'),
   },
-  { label: 'Overview', icon: 'grid-outline', href: '/overview', match: (p) => p.startsWith('/overview') },
   {
     label: 'Profile',
     icon: 'person-circle-outline',
