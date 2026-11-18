@@ -1,4 +1,4 @@
-// Built-in recipes. Nutrition is calculated from the ingredients (USDA data),
+// Built-in recipes. Nutrition is calculated from the ingredients (BLS 4.0 data),
 // so every number on a recipe comes from the food database.
 
 export type Meal = 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -47,7 +47,7 @@ export const RECIPES: Recipe[] = [
     ingredients: [
       { food: 'oats', g: 60 },
       { food: 'milk', g: 150 },
-      { food: 'greek-yogurt', g: 100 },
+      { food: 'skyr', g: 100 },
       { food: 'blueberries', g: 75 },
       { food: 'chia', g: 10 },
       { food: 'honey', g: 7 },
@@ -68,14 +68,13 @@ export const RECIPES: Recipe[] = [
     ingredients: [
       { food: 'oats', g: 60 },
       { food: 'milk', g: 250 },
-      { food: 'whey', g: 30 },
+      { food: 'quark', g: 125 },
       { food: 'banana', g: 118 },
-      { food: 'cinnamon', g: 1 },
     ],
     steps: [
       'Simmer oats in the milk for about 4 minutes, stirring.',
-      'Take off the heat and stir in the protein powder.',
-      'Top with sliced banana and cinnamon.',
+      'Take off the heat and stir in the Topfen until creamy.',
+      'Top with sliced banana and a pinch of cinnamon.',
     ],
     tags: 'Porridge Haferbrei',
   },
@@ -101,17 +100,17 @@ export const RECIPES: Recipe[] = [
   },
   {
     key: 'yogurt-bowl',
-    name: 'Greek yogurt granola bowl',
+    name: 'Skyr granola bowl',
     meal: 'breakfast',
     minutes: 3,
     servings: 1,
     ingredients: [
-      { food: 'greek-yogurt', g: 250 },
+      { food: 'skyr', g: 250 },
       { food: 'granola', g: 40 },
       { food: 'strawberries', g: 100 },
       { food: 'honey', g: 7 },
     ],
-    steps: ['Spoon the yogurt into a bowl.', 'Add granola and sliced strawberries, drizzle with honey.'],
+    steps: ['Spoon the skyr into a bowl.', 'Add granola and sliced strawberries, drizzle with honey.'],
     tags: 'Joghurt Müsli Skyr',
   },
   {
@@ -142,11 +141,11 @@ export const RECIPES: Recipe[] = [
       { food: 'banana', g: 118 },
       { food: 'egg', g: 100, note: '2 eggs' },
       { food: 'oats', g: 40 },
-      { food: 'whey', g: 15 },
+      { food: 'quark', g: 60 },
       { food: 'blueberries', g: 50 },
     ],
     steps: [
-      'Blend banana, eggs, oats and protein powder into a batter.',
+      'Blend banana, eggs, oats and Topfen into a batter.',
       'Cook small pancakes in a non-stick pan, about 2 minutes per side.',
       'Serve with blueberries.',
     ],
@@ -199,7 +198,7 @@ export const RECIPES: Recipe[] = [
       { food: 'corn', g: 80 },
       { food: 'cucumber', g: 100 },
       { food: 'tomato', g: 100 },
-      { food: 'greek-yogurt-full', g: 50 },
+      { food: 'yogurt-full', g: 50 },
     ],
     steps: [
       'Cook the pasta and rinse it with cold water.',
@@ -281,7 +280,7 @@ export const RECIPES: Recipe[] = [
     ingredients: [
       { food: 'rice', g: 180 },
       { food: 'beef-mince-cooked', g: 100 },
-      { food: 'black-beans', g: 100 },
+      { food: 'kidney-beans', g: 100 },
       { food: 'corn', g: 60 },
       { food: 'tomato', g: 80 },
       { food: 'sour-cream', g: 15 },
@@ -463,13 +462,13 @@ export const RECIPES: Recipe[] = [
   // ── Snacks ──
   {
     key: 'protein-shake',
-    name: 'Banana protein shake',
+    name: 'Skyr banana shake',
     meal: 'snack',
     minutes: 2,
     servings: 1,
     ingredients: [
-      { food: 'whey', g: 30 },
-      { food: 'milk', g: 300 },
+      { food: 'skyr', g: 200 },
+      { food: 'milk', g: 250 },
       { food: 'banana', g: 118 },
     ],
     steps: ['Blend everything until smooth.'],
@@ -489,16 +488,16 @@ export const RECIPES: Recipe[] = [
   },
   {
     key: 'yogurt-honey-walnut',
-    name: 'Yogurt with honey and walnuts',
+    name: 'Skyr with honey and walnuts',
     meal: 'snack',
     minutes: 2,
     servings: 1,
     ingredients: [
-      { food: 'greek-yogurt', g: 170 },
+      { food: 'skyr', g: 170 },
       { food: 'honey', g: 7 },
       { food: 'walnuts', g: 15 },
     ],
-    steps: ['Top the yogurt with honey and chopped walnuts.'],
+    steps: ['Top the skyr with honey and chopped walnuts.'],
   },
   {
     key: 'rice-cakes',
@@ -524,7 +523,7 @@ export const RECIPES: Recipe[] = [
       { food: 'almonds', g: 20 },
       { food: 'cashews', g: 15 },
       { food: 'raisins', g: 15 },
-      { food: 'dark-chocolate', g: 10 },
+      { food: 'milk-chocolate', g: 10 },
     ],
     steps: ['Mix everything and keep it in a small box.'],
     tags: 'Nüsse Studentenfutter',

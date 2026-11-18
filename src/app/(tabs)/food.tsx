@@ -209,8 +209,8 @@ export default function FoodTab() {
         </>
       )}
       <Text style={[text.faint, { marginTop: S.lg }]}>
-        Food data: USDA FoodData Central (SR28) and Open Food Facts (ODbL). Goals: EU reference intakes (Regulation
-        1169/2011) and EFSA.
+        Food data: Max Rubner-Institut, Bundeslebensmittelschlüssel (BLS) 4.0, CC BY 4.0. Products: Open Food Facts
+        (ODbL). Goals: EU reference intakes (Regulation 1169/2011) and EFSA.
       </Text>
     </Page>
   );

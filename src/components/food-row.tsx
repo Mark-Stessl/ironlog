@@ -10,7 +10,7 @@ import { C, F, R, S } from '@/lib/theme';
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
 export const SOURCE: Record<FoodItem['source'], { label: string; icon: IconName }> = {
-  usda: { label: 'USDA', icon: 'leaf-outline' },
+  bls: { label: 'BLS', icon: 'leaf-outline' },
   product: { label: 'Product', icon: 'barcode-outline' },
   custom: { label: 'My food', icon: 'person-outline' },
   recipe: { label: 'Recipe', icon: 'restaurant-outline' },
@@ -24,6 +24,7 @@ export function servingLine(item: FoodItem): string {
   const kcal = Math.round(((item.per100.kcal ?? 0) * g) / 100);
   const parts = [s ? `${s.label}${/\bg\b|\d\s*g/.test(s.label) ? '' : ` (${Math.round(g)} g)`}` : '100 g', `${kcal} kcal`];
   if (item.brand) parts.unshift(item.brand);
+  else if (item.altName && item.altName !== item.name) parts.unshift(item.altName);
   return parts.join(' · ');
 }
 

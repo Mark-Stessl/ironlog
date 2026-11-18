@@ -3,6 +3,8 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
+  allBlsFoods,
+  blsFood,
   BUILTIN_FOODS,
   BUILTIN_RECIPES,
   builtinFood,
@@ -145,12 +147,14 @@ export async function allFoodItems(db: SQLiteDatabase): Promise<FoodItem[]> {
     ...foods.map((r) => foodItem(r, counts.get(`p:${r.id}`) ?? 0)),
     ...BUILTIN_RECIPES.map(withCount),
     ...BUILTIN_FOODS.map(withCount),
+    ...allBlsFoods().map((f) => (counts.has(f.ref) ? withCount(f) : f)),
   ];
 }
 
 export async function getFoodItem(db: SQLiteDatabase, ref: string): Promise<FoodItem | null> {
   const [kind, id] = [ref.slice(0, 1), ref.slice(2)];
   if (kind === 'f') return builtinFood(id) ?? null;
+  if (kind === 'b') return blsFood(id) ?? null;
   if (kind === 'r') return BUILTIN_RECIPES.find((r) => r.ref === ref) ?? null;
   if (kind === 'p') {
     const r = await db.getFirstAsync<FoodRow>('SELECT * FROM foods WHERE id = ?', Number(id));

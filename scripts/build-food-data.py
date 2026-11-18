@@ -1,217 +1,287 @@
 #!/usr/bin/env python3
-"""Builds src/lib/food-data.json from the USDA National Nutrient Database for
-Standard Reference, Release 28 (public domain, US Department of Agriculture,
-Agricultural Research Service).
+"""Builds the app's food data.
+
+Main source: Bundeslebensmittelschlüssel (BLS) 4.0, the German national nutrient
+database of the Max Rubner-Institut, published under CC BY 4.0:
+  Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0 -
+  Deutsche Nährstoffdatenbank. Karlsruhe. DOI: 10.25826/Data20251217-134202-0
+  https://blsdb.de  (download: BLS_4_0_2025_DE.zip -> BLS_4_0_Daten_2025_DE.xlsx)
 
 Usage:
-  npm pack fda-nutrient-database   # contains data/ABBREV.txt (SR28 abbreviated file)
-  python3 scripts/build-food-data.py path/to/ABBREV.txt
+  python3 scripts/build-food-data.py BLS_4_0_Daten_2025_DE.xlsx
 
-All values are per 100 g of the edible part. Salt is sodium x 2.5 (EU labelling rule).
+Outputs (all values per 100 g edible portion):
+  src/lib/food-data.json  everyday foods with portion sizes and search words
+  src/lib/bls-data.json   every other BLS food, compact rows, searchable in German
 """
 import json
+import re
 import sys
 from pathlib import Path
 
-# ABBREV.txt column positions (SR28 documentation, page 44).
-COL = {
-    'kcal': 3, 'protein': 4, 'fat': 5, 'carbs': 7, 'fiber': 8, 'sugar': 9,
-    'calcium': 10, 'iron': 11, 'magnesium': 12, 'potassium': 14, 'sodium': 15, 'zinc': 16,
-    'vitC': 20, 'vitB12': 31, 'vitD': 41, 'satFat': 44,
-}
+import openpyxl
 
-# key, NDB number, name, German and other search words, category, servings (label, grams)
+KEYS = ['kcal', 'protein', 'fat', 'carbs', 'fiber', 'sugar', 'satFat', 'salt',
+        'potassium', 'calcium', 'magnesium', 'iron', 'zinc', 'vitC', 'vitD', 'vitB12']
+
+# BLS component codes (first word of each column header).
+BLS = {'ENERCC': 'kcal', 'PROT625': 'protein', 'FAT': 'fat', 'CHO': 'carbs', 'FIBT': 'fiber',
+       'SUGAR': 'sugar', 'FASAT': 'satFat', 'NACL': 'salt', 'K': 'potassium', 'CA': 'calcium',
+       'MG': 'magnesium', 'FE': 'iron', 'ZN': 'zinc', 'VITC': 'vitC', 'VITD': 'vitD', 'VITB12': 'vitB12'}
+
+# Austrian words people type, added to the German names they mean.
+AUSTRIAN = [
+    (r'Quark', 'Topfen'), (r'Sahne', 'Obers Schlagobers Rahm'), (r'Kartoffel', 'Erdapfel Erdäpfel'),
+    (r'Brötchen', 'Semmel Weckerl'), (r'Tomate', 'Paradeiser'), (r'Hackfleisch', 'Faschiertes'),
+    (r'Pfannkuchen|Eierkuchen', 'Palatschinken'), (r'Aprikose', 'Marille'), (r'Pflaume', 'Zwetschke Zwetschge'),
+    (r'Blumenkohl', 'Karfiol'), (r'Bohne grün|Gartenbohne', 'Fisolen'), (r'Meerrettich', 'Kren'),
+    (r'Rosenkohl', 'Kohlsprossen'), (r'Aubergine', 'Melanzani'), (r'Hähnchen|Huhn', 'Hendl Hühnchen'),
+    (r'Mais', 'Kukuruz'), (r'Johannisbeere', 'Ribisel'), (r'Pfifferling', 'Eierschwammerl'),
+    (r'Weißkohl', 'Kraut'), (r'Möhre|Karotte', 'Karotte'), (r'Hefe', 'Germ'), (r'Sauerrahm|Saure Sahne', 'Sauerrahm'),
+    (r'Pute', 'Truthahn'), (r'Fleischkäse', 'Leberkäse'), (r'Grieß', 'Grieß'), (r'Hühnerei', 'Ei Eier'),
+    (r'Rote Bete|Rote Rübe', 'Rote Rüben Rahnen'), (r'Feldsalat', 'Vogerlsalat'), (r'Konfitüre', 'Marmelade'),
+    (r'Puderzucker', 'Staubzucker'), (r'Krapfen|Berliner', 'Krapfen'), (r'Kloß|Klöße', 'Knödel'),
+    (r'Wiener Würstchen', 'Frankfurter Würstel'), (r'Würstchen', 'Würstel'), (r'Schlagsahne', 'Schlagobers'),
+    (r'Speisequark', 'Topfen'), (r'Kürbis', 'Kürbis'),
+]
+
 FOODS = [
     # Fruit
-    ('banana', '09040', 'Banana', 'Banane', 'Fruit', [('1 medium', 118)]),
-    ('apple', '09003', 'Apple', 'Apfel', 'Fruit', [('1 medium', 182)]),
-    ('orange', '09200', 'Orange', 'Orange Apfelsine', 'Fruit', [('1 medium', 140)]),
-    ('pear', '09252', 'Pear', 'Birne', 'Fruit', [('1 medium', 178)]),
-    ('kiwi', '09148', 'Kiwi', 'Kiwi', 'Fruit', [('1 kiwi', 69)]),
-    ('grapes', '09132', 'Grapes', 'Weintrauben Trauben', 'Fruit', [('1 handful', 80)]),
-    ('strawberries', '09316', 'Strawberries', 'Erdbeeren', 'Fruit', [('1 handful', 100)]),
-    ('blueberries', '09050', 'Blueberries', 'Heidelbeeren Blaubeeren', 'Fruit', [('1 handful', 75)]),
-    ('raspberries', '09302', 'Raspberries', 'Himbeeren', 'Fruit', [('1 handful', 75)]),
-    ('pineapple', '09266', 'Pineapple', 'Ananas', 'Fruit', [('1 slice', 85)]),
-    ('mango', '09176', 'Mango', 'Mango', 'Fruit', [('1/2 mango', 165)]),
-    ('peach', '09236', 'Peach', 'Pfirsich', 'Fruit', [('1 medium', 150)]),
-    ('watermelon', '09326', 'Watermelon', 'Wassermelone', 'Fruit', [('1 slice', 280)]),
-    ('cherries', '09070', 'Cherries', 'Kirschen', 'Fruit', [('1 handful', 100)]),
-    ('plum', '09279', 'Plum', 'Zwetschke Pflaume', 'Fruit', [('1 plum', 66)]),
-    ('apricot', '09021', 'Apricot', 'Marille Aprikose', 'Fruit', [('1 apricot', 35)]),
-    ('lemon', '09150', 'Lemon', 'Zitrone', 'Fruit', [('1 lemon', 58)]),
-    ('avocado', '09037', 'Avocado', 'Avocado', 'Fruit', [('1/2 avocado', 75)]),
-    ('dates', '09421', 'Dates (Medjool)', 'Datteln', 'Fruit', [('1 date', 24)]),
-    ('raisins', '09298', 'Raisins', 'Rosinen', 'Fruit', [('1 tbsp', 10)]),
+    ('banana', 'bls:F503100', 'Banana', 'Banane', 'Fruit', [('1 medium', 118)]),
+    ('apple', 'bls:F110100', 'Apple', 'Apfel', 'Fruit', [('1 medium', 182)]),
+    ('orange', 'bls:F603100', 'Orange', 'Orange Apfelsine', 'Fruit', [('1 medium', 140)]),
+    ('pear', 'bls:F130100', 'Pear', 'Birne', 'Fruit', [('1 medium', 178)]),
+    ('kiwi', 'bls:F514100', 'Kiwi', 'Kiwi', 'Fruit', [('1 kiwi', 69)]),
+    ('grapes', 'bls:F310100', 'Grapes', 'Weintrauben Trauben', 'Fruit', [('1 handful', 80)]),
+    ('strawberries', 'bls:F301100', 'Strawberries', 'Erdbeeren', 'Fruit', [('1 handful', 100)]),
+    ('blueberries', 'bls:F304100', 'Blueberries', 'Heidelbeeren Blaubeeren', 'Fruit', [('1 handful', 75)]),
+    ('raspberries', 'bls:F302100', 'Raspberries', 'Himbeeren', 'Fruit', [('1 handful', 75)]),
+    ('pineapple', 'bls:F501100', 'Pineapple', 'Ananas', 'Fruit', [('1 slice', 85)]),
+    ('mango', 'bls:F516100', 'Mango', 'Mango', 'Fruit', [('1/2 mango', 165)]),
+    ('peach', 'bls:F203100', 'Peach', 'Pfirsich', 'Fruit', [('1 medium', 150)]),
+    ('watermelon', 'bls:F535100', 'Watermelon', 'Wassermelone', 'Fruit', [('1 slice', 280)]),
+    ('cherries', 'bls:F211100', 'Cherries', 'Kirschen', 'Fruit', [('1 handful', 100)]),
+    ('plum', 'bls:F220100', 'Plum', 'Zwetschke Pflaume', 'Fruit', [('1 plum', 66)]),
+    ('apricot', 'bls:F201100', 'Apricot', 'Marille Aprikose', 'Fruit', [('1 apricot', 35)]),
+    ('lemon', 'bls:F601100', 'Lemon', 'Zitrone', 'Fruit', [('1 lemon', 58)]),
+    ('avocado', 'bls:F502100', 'Avocado', 'Avocado', 'Fruit', [('1/2 avocado', 75)]),
+    ('dates', 'bls:F504400', 'Dates (dried)', 'Datteln', 'Fruit', [('1 date', 24)]),
+    ('raisins', 'bls:F840100', 'Raisins', 'Rosinen', 'Fruit', [('1 tbsp', 10)]),
     # Vegetables
-    ('broccoli', '11090', 'Broccoli', 'Brokkoli', 'Vegetables', [('1 portion', 150)]),
-    ('spinach', '11457', 'Spinach', 'Spinat Blattspinat', 'Vegetables', [('1 handful', 30)]),
-    ('tomato', '11529', 'Tomato', 'Tomate Paradeiser', 'Vegetables', [('1 medium', 123)]),
-    ('cucumber', '11205', 'Cucumber', 'Gurke Salatgurke', 'Vegetables', [('1/2 cucumber', 150)]),
-    ('bell-pepper', '11821', 'Red bell pepper', 'Paprika rot', 'Vegetables', [('1 pepper', 120)]),
-    ('carrot', '11124', 'Carrot', 'Karotte Möhre', 'Vegetables', [('1 medium', 61)]),
-    ('onion', '11282', 'Onion', 'Zwiebel', 'Vegetables', [('1 medium', 110)]),
-    ('garlic', '11215', 'Garlic', 'Knoblauch', 'Vegetables', [('1 clove', 3)]),
-    ('zucchini', '11477', 'Zucchini', 'Zucchini', 'Vegetables', [('1 medium', 200)]),
-    ('mushrooms', '11260', 'Mushrooms', 'Champignons Pilze', 'Vegetables', [('1 portion', 100)]),
-    ('lettuce', '11251', 'Romaine lettuce', 'Salat Römersalat Blattsalat', 'Vegetables', [('1 bowl', 50)]),
-    ('cauliflower', '11135', 'Cauliflower', 'Karfiol Blumenkohl', 'Vegetables', [('1 portion', 150)]),
-    ('green-beans', '11052', 'Green beans', 'Fisolen grüne Bohnen', 'Vegetables', [('1 portion', 125)]),
-    ('asparagus', '11011', 'Asparagus', 'Spargel', 'Vegetables', [('1 portion', 150)]),
-    ('cabbage', '11109', 'Cabbage', 'Kraut Weißkohl', 'Vegetables', [('1 portion', 100)]),
-    ('kale', '11233', 'Kale', 'Grünkohl', 'Vegetables', [('1 handful', 30)]),
-    ('celery', '11143', 'Celery', 'Stangensellerie', 'Vegetables', [('1 stalk', 40)]),
-    ('peas', '11312', 'Green peas', 'Erbsen', 'Vegetables', [('1 portion', 80)]),
-    ('corn', '11172', 'Sweet corn (canned)', 'Mais', 'Vegetables', [('1 portion', 80)]),
-    ('potato', '11674', 'Potato (baked)', 'Kartoffel Erdapfel', 'Vegetables', [('1 medium', 173)]),
-    ('potato-raw', '11352', 'Potato (raw)', 'Kartoffel Erdapfel roh', 'Vegetables', [('1 medium', 213)]),
-    ('sweet-potato', '11508', 'Sweet potato (baked)', 'Süßkartoffel', 'Vegetables', [('1 medium', 114)]),
-    ('tomatoes-canned', '11693', 'Crushed tomatoes (canned)', 'Tomaten Dose passiert Paradeiser', 'Vegetables', [('1/2 can', 200)]),
-    ('olives', '09193', 'Olives', 'Oliven', 'Vegetables', [('5 olives', 20)]),
-    ('edamame', '11212', 'Edamame', 'Edamame Sojabohnen', 'Vegetables', [('1 portion', 100)]),
+    ('broccoli', 'bls:G312100', 'Broccoli', 'Brokkoli', 'Vegetables', [('1 portion', 150)]),
+    ('spinach', 'bls:G211100', 'Spinach', 'Spinat Blattspinat', 'Vegetables', [('1 handful', 30)]),
+    ('tomato', 'bls:G561100', 'Tomato', 'Tomate Paradeiser', 'Vegetables', [('1 medium', 123)]),
+    ('cucumber', 'bls:G520100', 'Cucumber', 'Gurke Salatgurke', 'Vegetables', [('1/2 cucumber', 150)]),
+    ('bell-pepper', 'bls:G543100', 'Red bell pepper', 'Paprika rot', 'Vegetables', [('1 pepper', 120)]),
+    ('carrot', 'bls:G620100', 'Carrot', 'Karotte Möhre', 'Vegetables', [('1 medium', 61)]),
+    ('onion', 'bls:G480100', 'Onion', 'Zwiebel', 'Vegetables', [('1 medium', 110)]),
+    ('garlic', 'bls:G490100', 'Garlic', 'Knoblauch', 'Vegetables', [('1 clove', 3)]),
+    ('zucchini', 'bls:G582100', 'Zucchini', 'Zucchini', 'Vegetables', [('1 medium', 200)]),
+    ('mushrooms', 'bls:K701100', 'Mushrooms', 'Champignons Pilze', 'Vegetables', [('1 portion', 100)]),
+    ('lettuce', 'bls:G107100', 'Romaine lettuce', 'Salat Römersalat Blattsalat', 'Vegetables', [('1 bowl', 50)]),
+    ('cauliflower', 'bls:G311100', 'Cauliflower', 'Karfiol Blumenkohl', 'Vegetables', [('1 portion', 150)]),
+    ('green-beans', 'bls:G710100', 'Green beans', 'Fisolen grüne Bohnen', 'Vegetables', [('1 portion', 125)]),
+    ('asparagus', 'bls:G450100', 'Asparagus', 'Spargel', 'Vegetables', [('1 portion', 150)]),
+    ('cabbage', 'bls:G342100', 'Cabbage', 'Kraut Weißkohl', 'Vegetables', [('1 portion', 100)]),
+    ('kale', 'bls:G322100', 'Kale', 'Grünkohl', 'Vegetables', [('1 handful', 30)]),
+    ('celery', 'bls:G220100', 'Celery', 'Stangensellerie', 'Vegetables', [('1 stalk', 40)]),
+    ('peas', 'bls:G760200', 'Green peas (frozen)', 'Erbsen', 'Vegetables', [('1 portion', 80)]),
+    ('corn', 'bls:G570902', 'Sweet corn (canned)', 'Mais', 'Vegetables', [('1 portion', 80)]),
+    ('potato', 'bls:K110132', 'Potato (boiled)', 'Kartoffel Erdapfel', 'Vegetables', [('1 medium', 173)]),
+    ('potato-raw', 'bls:K110100', 'Potato (raw)', 'Kartoffel Erdapfel roh', 'Vegetables', [('1 medium', 213)]),
+    ('sweet-potato', 'bls:K420162', 'Sweet potato (baked)', 'Süßkartoffel', 'Vegetables', [('1 medium', 114)]),
+    ('tomatoes-canned', 'bls:G568900', 'Crushed tomatoes (canned)', 'Tomaten Dose passiert Paradeiser', 'Vegetables', [('1/2 can', 200)]),
+    ('olives', 'bls:H520800', 'Black olives', 'Oliven', 'Vegetables', [('5 olives', 20)]),
+    ('edamame', 'bls:G750100', 'Edamame', 'Edamame Sojabohnen', 'Vegetables', [('1 portion', 100)]),
     # Grains and bread
-    ('oats', '08120', 'Rolled oats', 'Haferflocken Hafer', 'Grains', [('1 portion', 50)]),
-    ('granola', '08037', 'Granola', 'Müsli Granola Knuspermüsli', 'Grains', [('1 portion', 50)]),
-    ('rice', '20345', 'White rice (cooked)', 'Reis gekocht', 'Grains', [('1 portion', 180)]),
-    ('rice-dry', '20044', 'White rice (dry)', 'Reis roh trocken', 'Grains', [('1 portion', 75)]),
-    ('brown-rice', '20037', 'Brown rice (cooked)', 'Vollkornreis Naturreis', 'Grains', [('1 portion', 180)]),
-    ('pasta', '20121', 'Pasta (cooked)', 'Nudeln Pasta Spaghetti gekocht', 'Grains', [('1 portion', 200)]),
-    ('pasta-dry', '20120', 'Pasta (dry)', 'Nudeln Pasta Spaghetti roh trocken', 'Grains', [('1 portion', 100)]),
-    ('pasta-wholewheat', '20125', 'Whole-wheat pasta (cooked)', 'Vollkornnudeln', 'Grains', [('1 portion', 200)]),
-    ('noodles-rice', '20134', 'Rice noodles (cooked)', 'Reisnudeln', 'Grains', [('1 portion', 175)]),
-    ('quinoa', '20137', 'Quinoa (cooked)', 'Quinoa', 'Grains', [('1 portion', 185)]),
-    ('couscous', '20029', 'Couscous (cooked)', 'Couscous', 'Grains', [('1 portion', 160)]),
-    ('bulgur', '20013', 'Bulgur (cooked)', 'Bulgur', 'Grains', [('1 portion', 180)]),
-    ('bread-wholewheat', '18075', 'Whole-wheat bread', 'Vollkornbrot Brot', 'Grains', [('1 slice', 40)]),
-    ('bread-white', '18069', 'White bread / toast', 'Weißbrot Toast Toastbrot', 'Grains', [('1 slice', 30)]),
-    ('bread-rye', '18060', 'Rye bread', 'Roggenbrot Schwarzbrot Brot', 'Grains', [('1 slice', 45)]),
-    ('bread-multigrain', '28397', 'Multigrain bread', 'Mehrkornbrot Körnerbrot', 'Grains', [('1 slice', 45)]),
-    ('roll', '18350', 'Bread roll', 'Semmel Brötchen Weckerl', 'Grains', [('1 roll', 50)]),
-    ('bagel', '18001', 'Bagel', 'Bagel', 'Grains', [('1 bagel', 98)]),
-    ('pita', '18041', 'Pita bread', 'Pita Fladenbrot', 'Grains', [('1 pita', 60)]),
-    ('tortilla', '18364', 'Flour tortilla / wrap', 'Tortilla Wrap', 'Grains', [('1 wrap', 60)]),
-    ('croissant', '18239', 'Croissant', 'Croissant Kipferl', 'Grains', [('1 croissant', 57)]),
-    ('rice-cakes', '19816', 'Rice cakes', 'Reiswaffeln', 'Grains', [('1 cake', 9)]),
-    ('flour', '20081', 'Wheat flour', 'Mehl Weizenmehl', 'Grains', [('1 tbsp', 8)]),
+    ('oats', 'bls:C133000', 'Rolled oats', 'Haferflocken Hafer', 'Grains', [('1 portion', 50)]),
+    ('granola', 'bls:C514200', 'Granola', 'Müsli Granola Knuspermüsli', 'Grains', [('1 portion', 50)]),
+    ('rice', 'bls:C352032', 'White rice (cooked)', 'Reis gekocht', 'Grains', [('1 portion', 180)]),
+    ('rice-dry', 'bls:C352000', 'White rice (dry)', 'Reis roh trocken', 'Grains', [('1 portion', 75)]),
+    ('brown-rice', 'bls:C351032', 'Brown rice (cooked)', 'Vollkornreis Naturreis', 'Grains', [('1 portion', 180)]),
+    ('pasta', 'bls:E401032', 'Pasta (cooked)', 'Nudeln Pasta Spaghetti gekocht', 'Grains', [('1 portion', 200)]),
+    ('pasta-dry', 'bls:E401000', 'Pasta (dry)', 'Nudeln Pasta Spaghetti roh trocken', 'Grains', [('1 portion', 100)]),
+    ('pasta-wholewheat', 'bls:E500032', 'Whole-wheat pasta (cooked)', 'Vollkornnudeln', 'Grains', [('1 portion', 200)]),
+    ('noodles-rice', 'bls:C559032', 'Rice noodles (cooked)', 'Reisnudeln', 'Grains', [('1 portion', 175)]),
+    ('quinoa', 'bls:C118032', 'Quinoa (cooked)', 'Quinoa', 'Grains', [('1 portion', 185)]),
+    ('couscous', 'bls:C119232', 'Couscous (cooked)', 'Couscous', 'Grains', [('1 portion', 160)]),
+    ('bulgur', 'bls:C119132', 'Bulgur (cooked)', 'Bulgur', 'Grains', [('1 portion', 180)]),
+    ('bread-wholewheat', 'bls:B111000', 'Whole-wheat bread', 'Vollkornbrot Brot', 'Grains', [('1 slice', 40)]),
+    ('bread-white', 'bls:B314000', 'Toast bread', 'Weißbrot Toast Toastbrot', 'Grains', [('1 slice', 30)]),
+    ('bread-rye', 'bls:B271000', 'Rye mixed bread', 'Roggenbrot Schwarzbrot Brot', 'Grains', [('1 slice', 45)]),
+    ('bread-multigrain', 'bls:B291000', 'Multigrain bread', 'Mehrkornbrot Körnerbrot', 'Grains', [('1 slice', 45)]),
+    ('roll', 'bls:B511000', 'Bread roll', 'Semmel Brötchen Weckerl', 'Grains', [('1 roll', 50)]),
+    ('pita', 'bls:B782100', 'Pita bread', 'Pita Fladenbrot', 'Grains', [('1 pita', 60)]),
+    ('tortilla', 'bls:B783012', 'Flour tortilla / wrap', 'Tortilla Wrap', 'Grains', [('1 wrap', 60)]),
+    ('croissant', 'bls:D771600', 'Croissant', 'Croissant Kipferl', 'Grains', [('1 croissant', 57)]),
+    ('rice-cakes', 'bls:C532700', 'Rice cakes', 'Reiswaffeln', 'Grains', [('1 cake', 9)]),
+    ('flour', 'bls:C214100', 'Wheat flour', 'Mehl Weizenmehl', 'Grains', [('1 tbsp', 8)]),
     # Meat, fish, eggs
-    ('chicken-breast', '05064', 'Chicken breast (cooked)', 'Hühnerbrust Hähnchenbrust Huhn gebraten', 'Meat & fish', [('1 portion', 150)]),
-    ('chicken-breast-raw', '05062', 'Chicken breast (raw)', 'Hühnerbrust Hähnchenbrust Huhn roh', 'Meat & fish', [('1 fillet', 175)]),
-    ('turkey-breast', '05710', 'Turkey breast (raw)', 'Putenbrust Truthahn Pute', 'Meat & fish', [('1 portion', 150)]),
-    ('beef-mince', '23562', 'Lean beef mince (raw)', 'Faschiertes Rinderhack Hackfleisch', 'Meat & fish', [('1 portion', 125)]),
-    ('beef-mince-cooked', '23565', 'Lean beef mince (cooked)', 'Faschiertes Rinderhack gebraten', 'Meat & fish', [('1 portion', 100)]),
-    ('pork-tenderloin', '10060', 'Pork tenderloin (raw)', 'Schweinefilet Schwein', 'Meat & fish', [('1 portion', 150)]),
-    ('ham', '07028', 'Ham (sliced)', 'Schinken Kochschinken', 'Meat & fish', [('1 slice', 20)]),
-    ('frankfurter', '07022', 'Frankfurter sausage', 'Frankfurter Würstel Wurst', 'Meat & fish', [('1 pair', 90)]),
-    ('salmon', '15237', 'Salmon (cooked)', 'Lachs gebraten', 'Meat & fish', [('1 fillet', 125)]),
-    ('salmon-raw', '15236', 'Salmon (raw)', 'Lachs roh Lachsfilet', 'Meat & fish', [('1 fillet', 125)]),
-    ('cod', '15015', 'Cod (raw)', 'Kabeljau Dorsch Fisch', 'Meat & fish', [('1 fillet', 150)]),
-    ('tuna', '15121', 'Tuna in water (canned)', 'Thunfisch Dose', 'Meat & fish', [('1 can', 120)]),
-    ('shrimp', '15149', 'Shrimp (raw)', 'Garnelen Shrimps Crevetten', 'Meat & fish', [('1 portion', 100)]),
-    ('egg', '01123', 'Egg', 'Ei Eier', 'Meat & fish', [('1 egg (M)', 50), ('1 egg (L)', 58)]),
-    ('egg-boiled', '01129', 'Hard-boiled egg', 'Ei gekocht hart', 'Meat & fish', [('1 egg', 50)]),
-    ('egg-white', '01124', 'Egg white', 'Eiklar Eiweiß', 'Meat & fish', [('1 egg white', 33)]),
+    ('chicken-breast', 'bls:V4A6182', 'Chicken breast (pan-fried)', 'Hühnerbrust Hähnchenbrust Huhn gebraten', 'Meat & fish', [('1 portion', 150)]),
+    ('chicken-breast-raw', 'bls:V416100', 'Chicken breast (raw)', 'Hühnerbrust Hähnchenbrust Huhn roh', 'Meat & fish', [('1 fillet', 175)]),
+    ('turkey-breast', 'bls:V486100', 'Turkey breast (raw)', 'Putenbrust Truthahn Pute', 'Meat & fish', [('1 portion', 150)]),
+    ('beef-mince', 'bls:U010100', 'Beef mince (raw)', 'Faschiertes Rinderhack Hackfleisch', 'Meat & fish', [('1 portion', 125)]),
+    ('beef-mince-cooked', 'bls:U010182', 'Beef mince (pan-fried)', 'Faschiertes Rinderhack gebraten', 'Meat & fish', [('1 portion', 100)]),
+    ('pork-tenderloin', 'bls:U611100', 'Pork tenderloin (raw)', 'Schweinefilet Schwein', 'Meat & fish', [('1 portion', 150)]),
+    ('ham', 'bls:W424000', 'Ham (sliced)', 'Schinken Kochschinken', 'Meat & fish', [('1 slice', 20)]),
+    ('leberkaese', 'bls:W233000', 'Leberkäse', 'Leberkäse Fleischkäse Leberkässemmel', 'Meat & fish', [('1 slice', 100)]),
+    ('pork-schnitzel', 'bls:U541100', 'Pork schnitzel (raw)', 'Schnitzel Schweineschnitzel', 'Meat & fish', [('1 schnitzel', 150)]),
+    ('frankfurter', 'bls:W211200', 'Wiener sausages', 'Frankfurter Würstel Wurst', 'Meat & fish', [('1 pair', 90)]),
+    ('salmon', 'bls:T410082', 'Salmon (pan-fried)', 'Lachs gebraten', 'Meat & fish', [('1 fillet', 125)]),
+    ('salmon-raw', 'bls:T410100', 'Salmon (raw)', 'Lachs roh Lachsfilet', 'Meat & fish', [('1 fillet', 125)]),
+    ('cod', 'bls:T204100', 'Cod (raw)', 'Kabeljau Dorsch Fisch', 'Meat & fish', [('1 fillet', 150)]),
+    ('tuna', 'bls:T121902', 'Tuna in water (canned)', 'Thunfisch Dose', 'Meat & fish', [('1 can', 120)]),
+    ('shrimp', 'bls:T753100', 'Shrimp (raw)', 'Garnelen Shrimps Crevetten', 'Meat & fish', [('1 portion', 100)]),
+    ('egg', 'bls:E111100', 'Egg', 'Ei Eier', 'Meat & fish', [('1 egg (M)', 50), ('1 egg (L)', 58)]),
+    ('egg-boiled', 'bls:E111132', 'Hard-boiled egg', 'Ei gekocht hart', 'Meat & fish', [('1 egg', 50)]),
+    ('egg-white', 'bls:E113100', 'Egg white', 'Eiklar Eiweiß', 'Meat & fish', [('1 egg white', 33)]),
     # Dairy
-    ('milk', '01174', 'Milk 2%', 'Milch fettarm Halbfett', 'Dairy', [('1 glass', 250)]),
-    ('milk-whole', '01211', 'Whole milk 3.5%', 'Vollmilch Milch', 'Dairy', [('1 glass', 250)]),
-    ('greek-yogurt', '01256', 'Greek yogurt (non-fat)', 'Joghurt griechisch Skyr Magerjoghurt', 'Dairy', [('1 portion', 170)]),
-    ('greek-yogurt-full', '01293', 'Greek yogurt (whole milk)', 'Joghurt griechisch', 'Dairy', [('1 portion', 150)]),
-    ('yogurt', '01117', 'Plain yogurt (low fat)', 'Joghurt Naturjoghurt', 'Dairy', [('1 cup', 150)]),
-    ('kefir', '01289', 'Kefir', 'Kefir Buttermilch', 'Dairy', [('1 glass', 250)]),
-    ('cottage-cheese', '01015', 'Cottage cheese', 'Hüttenkäse Cottage Cheese Topfen', 'Dairy', [('1 portion', 125)]),
-    ('mozzarella', '01028', 'Mozzarella', 'Mozzarella Käse', 'Dairy', [('1/2 ball', 60)]),
-    ('cheddar', '01009', 'Cheddar', 'Cheddar Käse', 'Dairy', [('1 slice', 28)]),
-    ('gouda', '01022', 'Gouda', 'Gouda Käse', 'Dairy', [('1 slice', 25)]),
-    ('emmentaler', '01040', 'Swiss cheese (Emmental)', 'Emmentaler Schweizer Käse', 'Dairy', [('1 slice', 25)]),
-    ('feta', '01019', 'Feta', 'Feta Schafkäse', 'Dairy', [('1 portion', 50)]),
-    ('parmesan', '01032', 'Parmesan', 'Parmesan Parmigiano', 'Dairy', [('1 tbsp', 5)]),
-    ('cream-cheese', '01017', 'Cream cheese', 'Frischkäse', 'Dairy', [('1 tbsp', 15)]),
-    ('ricotta', '01037', 'Ricotta', 'Ricotta', 'Dairy', [('1 portion', 60)]),
-    ('cream', '01053', 'Heavy cream', 'Schlagobers Sahne Schlagsahne', 'Dairy', [('1 tbsp', 15)]),
-    ('sour-cream', '01178', 'Sour cream', 'Sauerrahm Schmand', 'Dairy', [('1 tbsp', 15)]),
-    ('butter', '01001', 'Butter', 'Butter', 'Dairy', [('1 tsp', 5), ('1 tbsp', 14)]),
-    ('whey', '14066', 'Whey protein powder', 'Proteinpulver Eiweißpulver Whey Protein Shake', 'Dairy', [('1 scoop', 30)]),
-    ('almond-milk', '14091', 'Almond drink (unsweetened)', 'Mandelmilch Mandeldrink', 'Dairy', [('1 glass', 250)]),
-    ('soy-milk', '16222', 'Soy drink (unsweetened)', 'Sojamilch Sojadrink', 'Dairy', [('1 glass', 250)]),
+    ('milk', 'bls:M111200', 'Milk 1.5%', 'Milch fettarm Halbfett', 'Dairy', [('1 glass', 250)]),
+    ('milk-whole', 'bls:M111300', 'Whole milk 3.5%', 'Vollmilch Milch', 'Dairy', [('1 glass', 250)]),
+    ('skyr', 'bls:M710100', 'Skyr', 'Skyr Joghurt griechisch Greek yogurt Magerjoghurt Protein', 'Dairy', [('1 cup', 150)]),
+    ('yogurt-full', 'bls:M141300', 'Plain yogurt 3.5%', 'Joghurt Naturjoghurt griechisch', 'Dairy', [('1 cup', 150)]),
+    ('yogurt', 'bls:M141200', 'Plain yogurt 1.5%', 'Joghurt Naturjoghurt', 'Dairy', [('1 cup', 150)]),
+    ('kefir', 'bls:M130200', 'Kefir', 'Kefir Buttermilch', 'Dairy', [('1 glass', 250)]),
+    ('cottage-cheese', 'bls:M711100', 'Cottage cheese', 'Hüttenkäse Cottage Cheese Topfen', 'Dairy', [('1 portion', 125)]),
+    ('mozzarella', 'bls:M032100', 'Mozzarella', 'Mozzarella Käse', 'Dairy', [('1/2 ball', 60)]),
+    ('cheddar', 'bls:M303600', 'Cheddar', 'Cheddar Käse', 'Dairy', [('1 slice', 28)]),
+    ('gouda', 'bls:M402600', 'Gouda', 'Gouda Käse', 'Dairy', [('1 slice', 25)]),
+    ('emmentaler', 'bls:M304600', 'Swiss cheese (Emmental)', 'Emmentaler Schweizer Käse', 'Dairy', [('1 slice', 25)]),
+    ('feta', 'bls:M012200', 'Feta', 'Feta Schafkäse', 'Dairy', [('1 portion', 50)]),
+    ('parmesan', 'bls:M306400', 'Parmesan', 'Parmesan Parmigiano', 'Dairy', [('1 tbsp', 5)]),
+    ('cream-cheese', 'bls:M710800', 'Cream cheese', 'Frischkäse', 'Dairy', [('1 tbsp', 15)]),
+    ('ricotta', 'bls:M741600', 'Ricotta', 'Ricotta', 'Dairy', [('1 portion', 60)]),
+    ('cream', 'bls:M173900', 'Whipping cream 36%', 'Schlagobers Sahne Schlagsahne', 'Dairy', [('1 tbsp', 15)]),
+    ('sour-cream', 'bls:M172500', 'Sour cream 10%', 'Sauerrahm Schmand', 'Dairy', [('1 tbsp', 15)]),
+    ('butter', 'bls:Q611000', 'Butter', 'Butter', 'Dairy', [('1 tsp', 5), ('1 tbsp', 14)]),
+    ('quark', 'bls:M713100', 'Low-fat quark (Topfen)', 'Topfen Magertopfen Quark Magerquark', 'Dairy', [('1/2 tub', 125), ('1 tub', 250)]),
+    ('almond-milk', 'bls:H800000', 'Almond drink (unsweetened)', 'Mandelmilch Mandeldrink', 'Dairy', [('1 glass', 250)]),
+    ('soy-milk', 'bls:H841100', 'Soy drink (unsweetened)', 'Sojamilch Sojadrink', 'Dairy', [('1 glass', 250)]),
     # Legumes, nuts, seeds
-    ('lentils', '16070', 'Lentils (cooked)', 'Linsen', 'Legumes & nuts', [('1 portion', 150)]),
-    ('chickpeas', '16358', 'Chickpeas (canned, drained)', 'Kichererbsen', 'Legumes & nuts', [('1/2 can', 120)]),
-    ('kidney-beans', '16145', 'Kidney beans (canned, drained)', 'Kidneybohnen rote Bohnen', 'Legumes & nuts', [('1/2 can', 120)]),
-    ('black-beans', '16018', 'Black beans (canned)', 'schwarze Bohnen', 'Legumes & nuts', [('1/2 can', 120)]),
-    ('tofu', '16126', 'Tofu (firm)', 'Tofu', 'Legumes & nuts', [('1 portion', 100)]),
-    ('hummus', '16158', 'Hummus', 'Hummus', 'Legumes & nuts', [('1 tbsp', 15)]),
-    ('peanut-butter', '16098', 'Peanut butter', 'Erdnussbutter Erdnussmus', 'Legumes & nuts', [('1 tbsp', 16)]),
-    ('peanuts', '16090', 'Peanuts (roasted, salted)', 'Erdnüsse', 'Legumes & nuts', [('1 handful', 30)]),
-    ('almonds', '12061', 'Almonds', 'Mandeln', 'Legumes & nuts', [('1 handful', 30)]),
-    ('walnuts', '12155', 'Walnuts', 'Walnüsse Nüsse', 'Legumes & nuts', [('1 handful', 30)]),
-    ('cashews', '12087', 'Cashews', 'Cashewnüsse Cashew', 'Legumes & nuts', [('1 handful', 30)]),
-    ('chia', '12006', 'Chia seeds', 'Chiasamen Chia', 'Legumes & nuts', [('1 tbsp', 12)]),
-    ('flaxseed', '12220', 'Flaxseed', 'Leinsamen', 'Legumes & nuts', [('1 tbsp', 10)]),
-    ('sunflower-seeds', '12036', 'Sunflower seeds', 'Sonnenblumenkerne', 'Legumes & nuts', [('1 tbsp', 10)]),
+    ('lentils', 'bls:H730132', 'Lentils (cooked)', 'Linsen', 'Legumes & nuts', [('1 portion', 150)]),
+    ('chickpeas', 'bls:G770432', 'Chickpeas (cooked)', 'Kichererbsen', 'Legumes & nuts', [('1/2 can', 120)]),
+    ('kidney-beans', 'bls:H742902', 'Kidney beans (canned)', 'Kidneybohnen rote Bohnen', 'Legumes & nuts', [('1/2 can', 120)]),
+    ('tofu', 'bls:H861000', 'Tofu', 'Tofu', 'Legumes & nuts', [('1 portion', 100)]),
+    ('hummus', 'bls:H960000', 'Hummus', 'Hummus', 'Legumes & nuts', [('1 tbsp', 15)]),
+    ('peanut-butter', 'bls:H880200', 'Peanut butter', 'Erdnussbutter Erdnussmus', 'Legumes & nuts', [('1 tbsp', 16)]),
+    ('peanuts', 'bls:H110700', 'Peanuts (roasted, salted)', 'Erdnüsse', 'Legumes & nuts', [('1 handful', 30)]),
+    ('almonds', 'bls:H210100', 'Almonds', 'Mandeln', 'Legumes & nuts', [('1 handful', 30)]),
+    ('walnuts', 'bls:H120100', 'Walnuts', 'Walnüsse Nüsse', 'Legumes & nuts', [('1 handful', 30)]),
+    ('cashews', 'bls:H170100', 'Cashews', 'Cashewnüsse Cashew', 'Legumes & nuts', [('1 handful', 30)]),
+    ('chia', 'bls:H480100', 'Chia seeds', 'Chiasamen Chia', 'Legumes & nuts', [('1 tbsp', 12)]),
+    ('flaxseed', 'bls:H410100', 'Flaxseed', 'Leinsamen', 'Legumes & nuts', [('1 tbsp', 10)]),
+    ('sunflower-seeds', 'bls:H430100', 'Sunflower seeds', 'Sonnenblumenkerne', 'Legumes & nuts', [('1 tbsp', 10)]),
     # Fats, sauces, extras
-    ('olive-oil', '04053', 'Olive oil', 'Olivenöl Öl', 'Fats & extras', [('1 tsp', 4.5), ('1 tbsp', 13.5)]),
-    ('mayonnaise', '04025', 'Mayonnaise', 'Mayonnaise Mayo', 'Fats & extras', [('1 tbsp', 14)]),
-    ('ketchup', '11935', 'Ketchup', 'Ketchup', 'Fats & extras', [('1 tbsp', 17)]),
-    ('mustard', '02046', 'Mustard', 'Senf', 'Fats & extras', [('1 tsp', 5)]),
-    ('soy-sauce', '16123', 'Soy sauce', 'Sojasauce Sojasoße', 'Fats & extras', [('1 tbsp', 16)]),
-    ('pesto', '06626', 'Pesto', 'Pesto', 'Fats & extras', [('1 tbsp', 16)]),
-    ('tomato-sauce', '11549', 'Tomato sauce', 'Tomatensauce Tomatensoße Sugo', 'Fats & extras', [('1 portion', 125)]),
-    ('balsamic', '02069', 'Balsamic vinegar', 'Balsamico Essig', 'Fats & extras', [('1 tbsp', 16)]),
-    ('honey', '19296', 'Honey', 'Honig', 'Fats & extras', [('1 tsp', 7), ('1 tbsp', 21)]),
-    ('maple-syrup', '19353', 'Maple syrup', 'Ahornsirup', 'Fats & extras', [('1 tbsp', 20)]),
-    ('jam', '19297', 'Jam', 'Marmelade Konfitüre', 'Fats & extras', [('1 tbsp', 20)]),
-    ('sugar', '19335', 'Sugar', 'Zucker', 'Fats & extras', [('1 tsp', 4)]),
-    ('cinnamon', '02010', 'Cinnamon', 'Zimt', 'Fats & extras', [('1 tsp', 2.6)]),
+    ('olive-oil', 'bls:Q120000', 'Olive oil', 'Olivenöl Öl', 'Fats & extras', [('1 tsp', 4.5), ('1 tbsp', 13.5)]),
+    ('mayonnaise', 'bls:Q991000', 'Mayonnaise', 'Mayonnaise Mayo', 'Fats & extras', [('1 tbsp', 14)]),
+    ('ketchup', 'bls:R141100', 'Ketchup', 'Ketchup', 'Fats & extras', [('1 tbsp', 17)]),
+    ('mustard', 'bls:R132000', 'Mustard', 'Senf', 'Fats & extras', [('1 tsp', 5)]),
+    ('soy-sauce', 'bls:R143000', 'Soy sauce', 'Sojasauce Sojasoße', 'Fats & extras', [('1 tbsp', 16)]),
+    ('pesto', 'bls:X372012', 'Pesto', 'Pesto', 'Fats & extras', [('1 tbsp', 16)]),
+    ('tomato-sauce', 'bls:R161200', 'Tomato passata', 'Tomatensauce Tomatensoße Sugo', 'Fats & extras', [('1 portion', 125)]),
+    ('balsamic', 'bls:R125000', 'Balsamic vinegar', 'Balsamico Essig', 'Fats & extras', [('1 tbsp', 16)]),
+    ('honey', 'bls:S120000', 'Honey', 'Honig', 'Fats & extras', [('1 tsp', 7), ('1 tbsp', 21)]),
+    ('maple-syrup', 'bls:S151100', 'Maple syrup', 'Ahornsirup', 'Fats & extras', [('1 tbsp', 20)]),
+    ('jam', 'bls:S132000', 'Jam', 'Marmelade Konfitüre', 'Fats & extras', [('1 tbsp', 20)]),
+    ('sugar', 'bls:S111000', 'Sugar', 'Zucker', 'Fats & extras', [('1 tsp', 4)]),
     # Snacks and sweets
-    ('dark-chocolate', '19904', 'Dark chocolate 70-85%', 'Bitterschokolade Zartbitter Schokolade', 'Snacks & sweets', [('1 row', 20)]),
-    ('chips', '19411', 'Potato chips', 'Chips Kartoffelchips', 'Snacks & sweets', [('1 handful', 30)]),
-    ('cookie', '18160', 'Chocolate chip cookie', 'Keks Cookie', 'Snacks & sweets', [('1 cookie', 15)]),
-    ('ice-cream', '19095', 'Vanilla ice cream', 'Eis Vanilleeis', 'Snacks & sweets', [('1 scoop', 66)]),
-    ('pizza', '21224', 'Cheese pizza', 'Pizza Margherita', 'Snacks & sweets', [('1 slice', 107), ('1 pizza', 350)]),
-    ('pancakes', '18293', 'Pancakes', 'Palatschinken Pfannkuchen Pancakes', 'Snacks & sweets', [('1 pancake', 77)]),
-    ('muffin', '18274', 'Blueberry muffin', 'Muffin', 'Snacks & sweets', [('1 muffin', 113)]),
+    ('milk-chocolate', 'bls:S530000', 'Milk chocolate', 'Milchschokolade Schokolade', 'Snacks & sweets', [('1 row', 20)]),
+    ('chips', 'bls:K280100', 'Potato chips', 'Chips Kartoffelchips', 'Snacks & sweets', [('1 handful', 30)]),
+    ('cookie', 'bls:D7A2000', 'Chocolate chip cookie', 'Keks Cookie', 'Snacks & sweets', [('1 cookie', 15)]),
+    ('ice-cream', 'bls:S241000', 'Vanilla ice cream', 'Eis Vanilleeis', 'Snacks & sweets', [('1 scoop', 66)]),
+    ('pizza', 'bls:X912033', 'Pizza Margherita', 'Pizza Margherita', 'Snacks & sweets', [('1 slice', 107), ('1 pizza', 350)]),
+    ('pancakes', 'bls:X929212', 'Pancakes (Palatschinken)', 'Palatschinken Pfannkuchen Pancakes', 'Snacks & sweets', [('1 pancake', 77)]),
+    ('muffin', 'bls:D400800', 'Blueberry muffin', 'Muffin', 'Snacks & sweets', [('1 muffin', 113)]),
     # Drinks
-    ('orange-juice', '09206', 'Orange juice', 'Orangensaft O-Saft', 'Drinks', [('1 glass', 250)]),
-    ('coffee', '14209', 'Coffee (black)', 'Kaffee schwarz Espresso', 'Drinks', [('1 cup', 240)]),
-    ('tea', '14355', 'Tea (black)', 'Tee Schwarztee', 'Drinks', [('1 cup', 240)]),
-    ('cola', '14148', 'Cola', 'Cola Limonade Softdrink', 'Drinks', [('1 can', 330)]),
-    ('energy-drink', '14154', 'Energy drink', 'Energydrink Energy', 'Drinks', [('1 can', 250)]),
-    ('energy-drink-zero', '14156', 'Energy drink (sugar free)', 'Energydrink zuckerfrei', 'Drinks', [('1 can', 250)]),
-    ('wine-red', '14096', 'Red wine', 'Rotwein Wein', 'Drinks', [('1 glass', 125)]),
+    ('orange-juice', 'bls:F603600', 'Orange juice', 'Orangensaft O-Saft', 'Drinks', [('1 glass', 250)]),
+    ('coffee', 'bls:N410100', 'Coffee (black)', 'Kaffee schwarz Espresso', 'Drinks', [('1 cup', 240)]),
+    ('tea', 'bls:N630000', 'Tea (black)', 'Tee Schwarztee', 'Drinks', [('1 cup', 240)]),
+    ('cola', 'bls:N330000', 'Cola', 'Cola Limonade Softdrink', 'Drinks', [('1 can', 330)]),
+    ('cola-zero', 'bls:N331000', 'Cola zero (sweeteners)', 'Cola Zero light zuckerfrei', 'Drinks', [('1 can', 330)]),
+    ('wine-red', 'bls:P2A3000', 'Red wine (dry)', 'Rotwein Wein', 'Drinks', [('1 glass', 125)]),
 ]
 
 
-def num(s: str):
-    s = s.strip()
-    return float(s) if s else None
+TEXT_ZERO = {'<LOD', '<LOQ', 'TR', '<LOD or <LOQ'}
 
 
-def main(abbrev: Path):
-    rows = {}
-    for line in abbrev.read_text(encoding='latin-1').splitlines():
-        f = line.split('^')
-        rows[f[0].strip('~')] = f
-    out = []
-    keys = set()
-    for key, ndb, name, words, cat, servings in FOODS:
+def value(v):
+    """Numbers stay numbers; below detection limit / traces count as 0; '-' means unknown."""
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    t = str(v).strip()
+    if t in TEXT_ZERO:
+        return 0.0
+    try:
+        return float(t.replace(',', '.'))
+    except ValueError:
+        return None
+
+
+def read_bls(path: Path) -> dict:
+    wb = openpyxl.load_workbook(path, read_only=True)
+    rows = wb.worksheets[0].iter_rows(values_only=True)
+    head = next(rows)
+    cols = {}
+    for i, h in enumerate(head):
+        code = str(h or '').split(' ')[0]
+        if code in BLS and BLS[code] not in cols:
+            cols[BLS[code]] = i
+    assert len(cols) == len(BLS), f'missing BLS columns: {set(BLS.values()) - set(cols)}'
+    out = {}
+    for r in rows:
+        if not r[0]:
+            continue
+        n = {}
+        for k, i in cols.items():
+            v = value(r[i])
+            if v is not None:
+                n[k] = round(v, 3)
+        out[str(r[0]).strip()] = {'de': str(r[1]).strip(), 'en': str(r[2]).strip(), 'n': n}
+    return out
+
+
+def austrian_words(de: str) -> str:
+    extra = [w for pat, w in AUSTRIAN if re.search(pat, de)]
+    return ' '.join(extra)
+
+
+def main(bls_path: Path):
+    bls = read_bls(bls_path)
+    root = Path(__file__).resolve().parent.parent / 'src/lib'
+
+    curated, used, keys = [], set(), set()
+    for key, src, name, words, cat, servings in FOODS:
         assert key not in keys, f'duplicate {key}'
         keys.add(key)
-        f = rows[ndb]
-        n = {}
-        for k, i in COL.items():
-            v = num(f[i])
-            if v is None:
-                continue
-            if k == 'sodium':
-                n['salt'] = round(v * 2.5 / 1000, 3)
-            else:
-                n[k] = round(v, 3)
-        out.append({
-            'key': key, 'ndb': ndb, 'name': name, 'words': words, 'category': cat,
-            'servings': [{'label': l, 'g': g} for l, g in servings], 'n': n,
-        })
-    dest = Path(__file__).resolve().parent.parent / 'src/lib/food-data.json'
-    dest.write_text(json.dumps(out, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
-    print(f'{len(out)} foods -> {dest} ({dest.stat().st_size // 1024} KB)')
+        code = src.removeprefix('bls:')
+        row = bls[code]
+        used.add(code)
+        n = row['n']
+        words = f"{words} {row['de']} {austrian_words(row['de'])}".strip()
+        curated.append({'key': key, 'code': code, 'name': name, 'words': words, 'category': cat,
+                        'servings': [{'label': l, 'g': g} for l, g in servings], 'n': n})
+    (root / 'food-data.json').write_text(json.dumps(curated, ensure_ascii=False, separators=(',', ':')) + '\n',
+                                         encoding='utf-8')
+
+    # Every other BLS food: [code, English name, German name, extra words, *values in KEYS order]
+    rows = []
+    for code, row in bls.items():
+        if code in used:
+            continue
+        n = row['n']
+        if n.get('kcal') is None:
+            continue
+        vals = [n.get(k) for k in KEYS]
+        vals = [None if v is None else (int(v) if v == int(v) else v) for v in vals]
+        rows.append([code, row['en'], row['de'], austrian_words(row['de'])] + vals)
+    (root / 'bls-data.json').write_text(json.dumps(rows, ensure_ascii=False, separators=(',', ':')) + '\n',
+                                        encoding='utf-8')
+    for f in ('food-data.json', 'bls-data.json'):
+        print(f, (root / f).stat().st_size // 1024, 'KB')
+    print(len(curated), 'everyday foods with portions,', len(rows), 'more BLS foods')
 
 
 if __name__ == '__main__':

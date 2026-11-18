@@ -449,19 +449,19 @@ test('measures: formatting and typo check', async () => {
   assert.equal(validMeasure(82.4, 'kg'), true);
 });
 
-test('food data: USDA foods and recipes are complete and plausible', async () => {
+test('food data: BLS foods and recipes are complete and plausible', async () => {
   const { BUILTIN_FOODS, BUILTIN_RECIPES } = await import('../src/lib/foods');
   const { kcalFromMacros } = await import('../src/lib/nutrition');
   assert.ok(BUILTIN_FOODS.length >= 140);
+  assert.ok(BUILTIN_FOODS.every((f) => f.source === 'bls')); // German national database only
   for (const f of BUILTIN_FOODS) {
     for (const k of ['kcal', 'protein', 'carbs', 'fat'] as const) assert.ok(f.per100[k] != null, `${f.name} ${k}`);
     assert.ok(f.servings.length > 0 && f.servings[0].g > 0, `${f.name} serving`);
   }
   // Atwater check: energy matches protein/carbs/fat within 20 % (skips drinks with alcohol and near-zero foods).
   for (const f of BUILTIN_FOODS.filter((x) => (x.per100.kcal ?? 0) > 40 && !/wine|vinegar/i.test(x.name))) {
-    // USDA carbohydrate includes fibre; fibre counts 2 kcal/g (EU factor).
-    const fiber = f.per100.fiber ?? 0;
-    const est = kcalFromMacros({ ...f.per100, carbs: (f.per100.carbs ?? 0) - fiber }) + fiber * 2;
+    // Carbs exclude fibre (EU convention, as in BLS); fibre counts 2 kcal/g.
+    const est = kcalFromMacros(f.per100) + (f.per100.fiber ?? 0) * 2;
     assert.ok(Math.abs(est - f.per100.kcal!) / f.per100.kcal! < 0.2, `${f.name}: ${f.per100.kcal} vs ${est}`);
   }
   const meals = new Set(BUILTIN_RECIPES.map((r) => r.recipe!.meal));
@@ -472,7 +472,7 @@ test('food data: USDA foods and recipes are complete and plausible', async () =>
   }
   const shake = BUILTIN_RECIPES.find((r) => r.ref === 'r:protein-shake')!;
   const protein = (shake.per100.protein! * shake.servings[0].g) / 100;
-  assert.ok(protein > 30 && protein < 40, `shake protein ${protein}`); // 30 g whey + 300 g milk + banana
+  assert.ok(protein > 28 && protein < 40, `shake protein ${protein}`); // 200 g skyr + 250 g milk + banana
 });
 
 test('food search: German names, recipes by ingredient, typos', async () => {
@@ -552,10 +552,11 @@ test('database: food log, water, own foods, products and recipes', async () => {
   await fdb.logFood(db, { day: '2026-11-17', meal: 'snack', item: banana, grams: 118, amount: '1 medium' });
   const log = await fdb.dayLog(db, '2026-11-18');
   assert.equal(log.length, 2);
-  assert.ok(Math.abs(log[1].n.kcal! - 105) < 1); // 118 g banana = 105 kcal
+  const bananaKcal = (banana.per100.kcal! * 118) / 100;
+  assert.ok(Math.abs(log[1].n.kcal! - bananaKcal) < 0.01);
   await fdb.updateLogAmount(db, id, banana, 236, '2 × 1 medium');
   const totals = await fdb.dailyTotals(db, '2026-11-17', '2026-11-18');
-  assert.ok(Math.abs(totals.get('2026-11-17')!.kcal! - 105) < 1);
+  assert.ok(Math.abs(totals.get('2026-11-17')!.kcal! - bananaKcal) < 0.01);
   assert.ok(totals.get('2026-11-18')!.kcal! > 500);
   assert.deepEqual(await fdb.recentRefs(db, 'snack'), ['f:banana']);
   assert.equal(await fdb.copyMeal(db, '2026-11-18', '2026-11-19', 'breakfast'), 1);
@@ -604,4 +605,30 @@ test('database: food log, water, own foods, products and recipes', async () => {
   assert.equal(goals.kcal, 2600);
   assert.equal(goals.waterMl, 3000);
   assert.equal(goals.protein, 50);
+});
+
+test('BLS 4.0: whole database searchable, Austrian words, everyday foods first, fast', async () => {
+  const { BUILTIN_FOODS, BUILTIN_RECIPES, allBlsFoods, searchFoods } = await import('../src/lib/foods');
+  const fdb = await import('../src/lib/food-db');
+  const bls = allBlsFoods();
+  assert.ok(bls.length > 6900, `${bls.length}`);
+  const all = [...BUILTIN_RECIPES, ...BUILTIN_FOODS, ...bls];
+  const top = (q: string) => searchFoods(q, all)[0]?.name;
+  assert.equal(top('topfen'), 'Low-fat quark (Topfen)');
+  assert.equal(top('semmel'), 'Bread roll');
+  assert.equal(top('banane'), 'Banana');
+  assert.equal(top('leberkäse'), 'Leberkäse');
+  // Long-tail foods are found by their German name and by Austrian words.
+  assert.ok(searchFoods('kaiserschmarrn', all).length > 0 || searchFoods('schmarrn', all).length > 0);
+  assert.ok(searchFoods('marillenknödel', all).length + searchFoods('marille', all).length > 1);
+  assert.ok(searchFoods('karfiol', all).some((f) => /Blumenkohl/.test(f.altName ?? f.words)));
+  const t0 = performance.now();
+  for (const q of ['hühnerbrust', 'vollkornbrot', 'joghurt', 'griesbrei', 'xyzzy']) searchFoods(q, all);
+  const ms = (performance.now() - t0) / 5;
+  assert.ok(ms < 150, `search took ${ms.toFixed(0)} ms`);
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const item = (await fdb.getFoodItem(db, bls[0].ref))!;
+  assert.equal(item.name, bls[0].name);
+  assert.equal(item.source, 'bls');
 });

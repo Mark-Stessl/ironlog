@@ -29,6 +29,11 @@ import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 import { useTween } from '@/lib/use-tween';
 
+const SOURCE_NAME: Partial<Record<FoodItem['source'], string>> = {
+  bls: 'Bundeslebensmittelschlüssel (BLS 4.0)',
+  product: 'Open Food Facts',
+};
+
 const TABLE: { key: NutrientKey; indent?: boolean }[] = [
   { key: 'kcal' },
   { key: 'fat' },
@@ -137,6 +142,7 @@ function FoodDetail({
     router.back();
   };
 
+  const stepGrams = (d: number) => setGramText(String(Math.max(5, Math.round(((parseNum(gramText) ?? 0) + d) / 5) * 5)));
   const step = (d: number) => setCountText(String(Math.max(0.5, Math.round((count + d) * 2) / 2)));
   const src = SOURCE[item.source];
   const own = item.source === 'custom' || item.source === 'my-recipe' || item.source === 'product';
@@ -187,16 +193,24 @@ function FoodDetail({
           </Pressable>
         </View>
       ) : (
-        <View style={styles.amountBox}>
-          <TextInput
-            value={gramText}
-            onChangeText={setGramText}
-            keyboardType="decimal-pad"
-            selectTextOnFocus
-            accessibilityLabel="Amount in grams"
-            style={styles.amountInput}
-          />
-          <Text style={styles.amountUnit}>g</Text>
+        <View style={styles.stepper}>
+          <Pressable onPress={() => stepGrams(-10)} style={styles.stepButton} accessibilityLabel="10 g less">
+            <Ionicons name="remove" size={20} color={C.text} />
+          </Pressable>
+          <View style={styles.amountBox}>
+            <TextInput
+              value={gramText}
+              onChangeText={setGramText}
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+              accessibilityLabel="Amount in grams"
+              style={styles.amountInput}
+            />
+            <Text style={styles.amountUnit}>g</Text>
+          </View>
+          <Pressable onPress={() => stepGrams(10)} style={styles.stepButton} accessibilityLabel="10 g more">
+            <Ionicons name="add" size={20} color={C.text} />
+          </Pressable>
         </View>
       )}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
@@ -304,12 +318,13 @@ function FoodDetail({
         <View style={styles.badges}>
           <View style={styles.badge}>
             <Ionicons name={src.icon} size={12} color={C.textDim} />
-            <Text style={styles.badgeText}>{item.source === 'usda' ? 'USDA FoodData Central' : item.source === 'product' ? 'Open Food Facts' : src.label}</Text>
+            <Text style={styles.badgeText}>{SOURCE_NAME[item.source] ?? src.label}</Text>
           </View>
           {item.barcode ? <Text style={text.faint}>{item.barcode}</Text> : null}
         </View>
         <Text style={text.title}>{item.name}</Text>
         {item.brand ? <Text style={text.dim}>{item.brand}</Text> : null}
+        {item.altName && item.altName !== item.name ? <Text style={text.dim}>{item.altName}</Text> : null}
       </Animated.View>
 
       {desktop ? (
