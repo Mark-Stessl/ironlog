@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -113,6 +114,14 @@ function GoalsForm({ initial, weight }: { initial: GoalSettings; weight: number 
           <Text style={text.faint}>Water</Text>
         </View>
       </Animated.View>
+      <Pressable
+        onPress={() => router.push('/measures')}
+        accessibilityRole="link"
+        style={({ pressed }) => [styles.checkLink, pressed && { opacity: 0.7 }]}>
+        <Ionicons name="trending-down-outline" size={16} color={C.accent} />
+        <Text style={[text.body, { flex: 1 }]}>Does this match your weight trend? Check it in Measures</Text>
+        <Ionicons name="chevron-forward" size={16} color={C.textFaint} />
+      </Pressable>
 
       <SectionTitle title="Body" />
       <Card style={{ gap: S.md }}>
@@ -174,13 +183,15 @@ function GoalsForm({ initial, weight }: { initial: GoalSettings; weight: number 
           <Text style={text.dim}>
             Resting energy {Math.round(restingEnergy(profile)).toLocaleString('en-US')} kcal (Henry equation, used by
             EFSA) × activity {profile.pal.toFixed(1)}
-            {aim !== 'maintain' ? ` ${aim === 'lose' ? '−' : '+'} ${Math.abs(AIM_OPTIONS.find((a) => a.value === aim)!.kcal)} kcal` : ''} ={' '}
-            {calculated.kcal.toLocaleString('en-US')} kcal.
+            {aim !== 'maintain'
+              ? ` ${aim === 'lose' ? '−' : '+'} ${Math.abs(AIM_OPTIONS.find((a) => a.value === aim)!.kcal)} kcal`
+              : ''}{' '}
+            = {calculated.kcal.toLocaleString('en-US')} kcal.
           </Text>
           <Text style={text.dim}>
             Fat 30% of energy (EFSA: 20–35%), the rest from carbs. Water {(calculated.waterMl / 1000).toFixed(1)} L from
-            drinks: EFSA recommends {sex === 'male' ? '2.5' : '2.0'} L in total, about 80% of it from drinks. Drink more on
-            hot days and when you train.
+            drinks: EFSA recommends {sex === 'male' ? '2.5' : '2.0'} L in total, about 80% of it from drinks. Drink more
+            on hot days and when you train.
           </Text>
         </Card>
       ) : (
@@ -251,6 +262,16 @@ function Field({
 }
 
 const styles = StyleSheet.create({
+  checkLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    padding: S.md,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+  },
   result: {
     flexDirection: 'row',
     alignItems: 'center',

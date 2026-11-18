@@ -29,6 +29,8 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Statistics** (on the profile) per week, month or year: totals compared with the previous period, a muscle distribution chart (Chest, Back, Shoulders, Arms, Legs, Core) and a body heatmap with sets per muscle
 - **Calendar** of the days you trained; days without a workout can be marked as rest days, which keep your day streak going and show as a moon on the home screen
 - **Measures**: body weight with a chart and history, plus optional body fat and body measurements (neck, chest, arms, waist, thighs, ...)
+- **Weight trend**: a smoothed trend line (exponential moving average, 10 % a day) under the daily scale readings, with kg per week
+- **Calorie check**: compares the last 28 days of weight trend with what you logged, estimates the calories you really burn (1 kg ≈ 7,700 kcal) and suggests a goal that fits your aim
 
 ### Food
 
@@ -41,7 +43,9 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Your own foods** typed in from the label, and **your own recipes** with nutrition calculated automatically
 - **Pictures**: a photo for every built-in recipe, package photos for supermarket products, an emoji for every food, and your own photos of meals, foods and recipes (taken or picked from the gallery, kept only on the phone)
 - **Goals**: EU reference intakes by default; with age, height, weight and activity, calories come from the Henry equation × EFSA activity level, protein from g per kg body weight (ISSN 1.4–2.0), fat 30 % of energy, water from EFSA (2.0 L men / 1.6 L women from drinks); every number can be overridden
-- Quick add, "same as yesterday" for a whole meal, edit or remove entries, browse earlier days
+- Quick add, "same as yesterday" for a whole meal, edit entries, browse earlier days
+- **One-tap remove** with Undo on every logged entry
+- **Favourites** (star on any food or recipe) and **saved meals**: the bookmark next to a meal saves it as a usual meal, which is then added again with one tap from the empty meal or the add screen
 - **Week strip and streak** on the home screen
 - **Personal records** per exercise (heaviest set, estimated 1RM, best session volume) and a trophy on sets that beat your previous best weight
 
@@ -70,7 +74,7 @@ On phones the app uses bottom tabs. In a browser window wider than 900 px it swi
 npm run web
 ```
 
-The web version uses the same code and keeps its data in the browser, separate from the phone app. Every push to `main` also builds it and publishes it to GitHub Pages (see `.github/workflows/deploy-web.yml`).
+The web version uses the same code and keeps its data in the browser, separate from the phone app. Added to the iPhone home screen it has its own icon and launch screen and opens without internet: a service worker (`public/sw.js`) keeps a copy of the app, and `scripts/precache.mjs` writes the list of files into it after each build. Every push to `main` also builds it and publishes it to GitHub Pages (see `.github/workflows/deploy-web.yml`).
 
 ## Project layout
 

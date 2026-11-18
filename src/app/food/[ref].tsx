@@ -18,7 +18,9 @@ import {
   getFoodItem,
   getGoals,
   getLogEntry,
+  isFavorite,
   logFood,
+  setFavorite,
   setFoodImage,
   updateLogAmount,
 } from '@/lib/food-db';
@@ -56,6 +58,7 @@ export default function FoodScreen() {
       item: await getFoodItem(db, p.ref),
       goals: await getGoals(db),
       entry: p.entry ? await getLogEntry(db, Number(p.entry)) : null,
+      favorite: await isFavorite(db, p.ref),
     }),
     `${p.ref}-${p.entry ?? ''}`,
   );
@@ -67,6 +70,7 @@ export default function FoodScreen() {
       item={data.item}
       goals={data.goals}
       entry={data.entry}
+      favorite={data.favorite}
       meal={(data.entry?.meal ?? (p.meal as Meal)) || mealForTime()}
       day={data.entry?.day || p.day || dayKey(Date.now())}
     />
@@ -80,9 +84,11 @@ function FoodDetail({
   item,
   goals,
   entry,
+  favorite,
   meal: initialMeal,
   day,
 }: {
+  favorite: boolean;
   item: FoodItem;
   goals: Goals;
   entry: Awaited<ReturnType<typeof getLogEntry>>;
@@ -349,10 +355,23 @@ function FoodDetail({
       <Stack.Screen
         options={{
           title: '',
-          headerRight: () =>
-            own && !entry ? (
-              <HeaderButton icon="trash-outline" label="Delete food" onPress={removeFood} color={C.danger} />
-            ) : null,
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
+              <HeaderButton
+                icon={favorite ? 'star' : 'star-outline'}
+                label={favorite ? 'Remove from favourites' : 'Add to favourites'}
+                onPress={async () => {
+                  await setFavorite(db, item.ref, !favorite);
+                  haptic.tap();
+                  reload();
+                }}
+                color={favorite ? C.gold : C.textDim}
+              />
+              {own && !entry ? (
+                <HeaderButton icon="trash-outline" label="Delete food" onPress={removeFood} color={C.danger} />
+              ) : null}
+            </View>
+          ),
         }}
       />
       <View style={desktop && photo ? styles.headWide : { gap: S.md }}>

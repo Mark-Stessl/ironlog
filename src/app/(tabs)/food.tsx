@@ -7,7 +7,7 @@ import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } 
 
 import { CalorieRing, DetailBars, EnergySplit, MacroBars, MicroBars, WeekBars } from '@/components/nutrition-charts';
 import { FoodThumb, type ThumbData } from '@/components/food-thumb';
-import { Card, IconButton, ListCard, ListRow, Page, SectionTitle, text } from '@/components/ui';
+import { Card, IconButton, ListCard, ListRow, Page, SectionTitle, text, type IconName } from '@/components/ui';
 import { WaterCard } from '@/components/water-card';
 import { addDays, dayKey, dayStart, relativeDay } from '@/lib/calendar';
 import {
@@ -17,21 +17,29 @@ import {
   dayLog,
   dayMealPhotos,
   dayWater,
+  deleteLogEntries,
   deleteLogEntry,
+  deleteSavedMeal,
   getGoalSettings,
   goalsFrom,
+  logSavedMeal,
   restoreLogEntry,
+  saveMeal,
+  savedMeals,
   setMealPhoto,
   thumbsFor,
   undoWater,
   type LogEntry,
+  type SavedMeal,
 } from '@/lib/food-db';
 import { haptic } from '@/lib/haptics';
 import { pickPhoto } from '@/lib/photo';
 import { sum } from '@/lib/nutrition';
-import { MEALS, type Meal } from '@/lib/recipes';
+import { MEALS, mealLabel, type Meal } from '@/lib/recipes';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
+
+type Toast = { id: number; text: string; icon: IconName; undo?: () => Promise<void> };
 
 export default function FoodTab() {
   const db = useSQLiteContext();
@@ -41,19 +49,20 @@ export default function FoodTab() {
 
   const [data, reload] = useFocusData(async (d) => {
     const from = addDays(day, -6);
-    const [log, yesterday, water, settings, week, photos] = await Promise.all([
+    const [log, yesterday, water, settings, week, photos, saved] = await Promise.all([
       dayLog(d, day),
       dayLog(d, addDays(day, -1)),
       dayWater(d, day),
       getGoalSettings(d),
       dailyTotals(d, from, day),
       dayMealPhotos(d, day),
+      savedMeals(d),
     ]);
     const thumbs = await thumbsFor(
       d,
       log.map((e) => e.ref),
     );
-    return { log, yesterday, water, settings, goals: goalsFrom(settings), week, photos, thumbs };
+    return { log, yesterday, water, settings, goals: goalsFrom(settings), week, photos, thumbs, saved };
   }, day);
 
   const log = data?.log ?? [];
@@ -61,29 +70,57 @@ export default function FoodTab() {
   const total = sum(log.map((e) => e.n));
   const eaten = total.kcal ?? 0;
 
-  // Removing an entry is one tap; a bar offers Undo for a few seconds.
-  const [removed, setRemoved] = useState<LogEntry | null>(null);
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Short message at the bottom ("Removed banana", "Saved as usual breakfast"), often with Undo.
+  const [toast, setToast] = useState<Toast | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
-      if (undoTimer.current) clearTimeout(undoTimer.current);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
     },
     [],
   );
+  const showToast = (t: Omit<Toast, 'id'>) => {
+    setToast({ ...t, id: Date.now() });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 5000);
+  };
+  const runUndo = async () => {
+    if (!toast?.undo) return;
+    await toast.undo();
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast(null);
+    haptic.tap();
+    reload();
+  };
+
   const removeEntry = async (e: LogEntry) => {
     await deleteLogEntry(db, e.id);
     haptic.tap();
-    setRemoved(e);
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    undoTimer.current = setTimeout(() => setRemoved(null), 5000);
+    showToast({ text: `Removed ${e.name}`, icon: 'trash-outline', undo: () => restoreLogEntry(db, e) });
     reload();
   };
-  const undoRemove = async () => {
-    if (!removed) return;
-    await restoreLogEntry(db, removed);
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    setRemoved(null);
-    haptic.tap();
+
+  const saveUsual = async (meal: Meal) => {
+    const res = await saveMeal(db, day, meal);
+    if (!res) return;
+    haptic.success();
+    const label = mealLabel(meal).toLowerCase();
+    if (res.existed) {
+      showToast({ text: `Already saved as a usual ${label}`, icon: 'bookmark' });
+    } else {
+      showToast({
+        text: `Saved as a usual ${label}`,
+        icon: 'bookmark',
+        undo: () => deleteSavedMeal(db, res.meal.id),
+      });
+    }
+    reload();
+  };
+
+  const addSaved = async (m: SavedMeal, meal: Meal) => {
+    const ids = await logSavedMeal(db, m.id, day, meal);
+    haptic.success();
+    showToast({ text: `Added ${m.name}`, icon: 'checkmark-circle', undo: () => deleteLogEntries(db, ids) });
     reload();
   };
 
@@ -141,6 +178,13 @@ export default function FoodTab() {
               title={entries.length ? `${m.label} · ${Math.round(kcal)} kcal` : m.label}
               right={
                 <View style={{ flexDirection: 'row' }}>
+                  {entries.length ? (
+                    <IconButton
+                      icon="bookmark-outline"
+                      label={`Save ${m.label.toLowerCase()} as a usual meal`}
+                      onPress={() => saveUsual(m.key)}
+                    />
+                  ) : null}
                   <IconButton
                     icon="camera-outline"
                     label={`Photo of ${m.label.toLowerCase()}`}
@@ -184,27 +228,47 @@ export default function FoodTab() {
                 ))}
               </ListCard>
             ) : (
-              <View style={styles.emptyMeal}>
-                <Pressable
-                  onPress={() => openAdd(m.key)}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [styles.addMeal, pressed && { opacity: 0.7 }]}>
-                  <Ionicons name={m.icon} size={16} color={C.textDim} />
-                  <Text style={styles.addMealLabel}>Add {m.label.toLowerCase()}</Text>
-                </Pressable>
-                {before.length ? (
+              <View style={{ gap: S.sm }}>
+                <View style={styles.emptyMeal}>
                   <Pressable
-                    onPress={async () => {
-                      await copyMeal(db, addDays(day, -1), day, m.key);
-                      haptic.success();
-                      reload();
-                    }}
+                    onPress={() => openAdd(m.key)}
                     accessibilityRole="button"
-                    style={({ pressed }) => [styles.copy, pressed && { opacity: 0.7 }]}>
-                    <Ionicons name="copy-outline" size={14} color={C.accent} />
-                    <Text style={styles.copyLabel}>Same as yesterday</Text>
+                    style={({ pressed }) => [styles.addMeal, pressed && { opacity: 0.7 }]}>
+                    <Ionicons name={m.icon} size={16} color={C.textDim} />
+                    <Text style={styles.addMealLabel}>Add {m.label.toLowerCase()}</Text>
                   </Pressable>
-                ) : null}
+                  {before.length ? (
+                    <Pressable
+                      onPress={async () => {
+                        await copyMeal(db, addDays(day, -1), day, m.key);
+                        haptic.success();
+                        reload();
+                      }}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.copy, pressed && { opacity: 0.7 }]}>
+                      <Ionicons name="copy-outline" size={14} color={C.accent} />
+                      <Text style={styles.copyLabel}>Same as yesterday</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {(data?.saved ?? [])
+                  .filter((x) => x.meal === m.key)
+                  .slice(0, 3)
+                  .map((x) => (
+                    <Pressable
+                      key={x.id}
+                      onPress={() => addSaved(x, m.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Add ${x.name}`}
+                      style={({ pressed }) => [styles.usual, pressed && { opacity: 0.7 }]}>
+                      <Ionicons name="bookmark" size={14} color={C.accent} />
+                      <Text style={styles.usualName} numberOfLines={1}>
+                        {x.name}
+                      </Text>
+                      <Text style={text.faint}>{Math.round(x.total.kcal ?? 0)} kcal</Text>
+                      <Ionicons name="add" size={18} color={C.accent} />
+                    </Pressable>
+                  ))}
               </View>
             )}
           </Animated.View>
@@ -291,19 +355,21 @@ export default function FoodTab() {
           (ODbL). Goals: EU reference intakes (Regulation 1169/2011) and EFSA.
         </Text>
       </Page>
-      {removed ? (
+      {toast ? (
         <Animated.View
-          key={removed.id}
+          key={toast.id}
           entering={FadeInDown.duration(200)}
           exiting={FadeOutDown.duration(200)}
           style={styles.undoBar}>
-          <Ionicons name="trash-outline" size={16} color={C.textDim} />
+          <Ionicons name={toast.icon} size={16} color={toast.icon === 'trash-outline' ? C.textDim : C.accent} />
           <Text style={styles.undoText} numberOfLines={1}>
-            Removed {removed.name}
+            {toast.text}
           </Text>
-          <Pressable onPress={undoRemove} accessibilityRole="button" hitSlop={8} style={styles.undoButton}>
-            <Text style={styles.undoButtonText}>Undo</Text>
-          </Pressable>
+          {toast.undo ? (
+            <Pressable onPress={runUndo} accessibilityRole="button" hitSlop={8} style={styles.undoButton}>
+              <Text style={styles.undoButtonText}>Undo</Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       ) : null}
     </View>
@@ -396,6 +462,18 @@ const styles = StyleSheet.create({
     borderColor: C.accentLine,
   },
   copyLabel: { color: C.text, fontFamily: F.semi, fontSize: 12 },
+  usual: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    height: 42,
+    paddingHorizontal: S.md,
+    borderRadius: R.lg,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  usualName: { flex: 1, minWidth: 0, color: C.text, fontFamily: F.medium, fontSize: 13 },
   removeEntry: {
     width: 32,
     height: 32,
@@ -415,7 +493,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: S.sm,
-    height: 48,
+    minHeight: 48,
     paddingLeft: S.md,
     paddingRight: 6,
     borderRadius: R.lg,

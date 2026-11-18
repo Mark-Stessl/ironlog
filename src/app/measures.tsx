@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { CalorieCheck } from '@/components/calorie-check';
 import { MeasurePanel } from '@/components/measure-panel';
 import { ListCard, ListRow, Page, PageHeader, SectionTitle, text } from '@/components/ui';
 import { latestMeasurements, listMeasurements } from '@/lib/db';
@@ -21,6 +22,7 @@ export default function MeasuresScreen() {
       {data ? (
         <>
           <MeasurePanel kind={WEIGHT} entries={data.weight} onChange={reload} />
+          <CalorieCheck refresh={data.weight.length} />
           {data.weight.length ? (
             <ListCard>
               <ListRow

@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -10,7 +10,8 @@ import { addMeasurement, type Measurement } from '@/lib/db';
 import { notify } from '@/lib/dialog';
 import { parseNum } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
-import { fmtChange, fmtMeasure, validMeasure, type MeasureKind } from '@/lib/measures';
+import { fmtChange, fmtMeasure, validMeasure, WEIGHT, type MeasureKind } from '@/lib/measures';
+import { trendRate, weightTrend } from '@/lib/weight-trend';
 import { C, F, R, S } from '@/lib/theme';
 
 /** Latest value, change, chart over time and a field to log a new value. */
@@ -30,6 +31,13 @@ export function MeasurePanel({
   const last = entries[entries.length - 1];
   const first = entries[0];
   const prev = entries[entries.length - 2];
+  // Weight gets a smoothed trend: daily water swings hide the real direction.
+  const trend = useMemo(
+    () => (kind.key === WEIGHT.key && entries.length >= 3 ? weightTrend(entries) : null),
+    [kind.key, entries],
+  );
+  const rate = trend ? trendRate(trend, 28, 7) : null;
+  const trendNow = trend?.[trend.length - 1]?.trend;
 
   const save = async () => {
     const v = parseNum(value);
@@ -68,6 +76,12 @@ export function MeasurePanel({
           ) : (
             <Text style={styles.change}>{kind.hint ?? 'Log a value to start your history.'}</Text>
           )}
+          {trendNow != null ? (
+            <Text style={[styles.change, { color: C.text }]}>
+              Trend {fmtMeasure(Math.round(trendNow * 10) / 10, kind.unit)}
+              {rate ? `  ·  ${fmtChange(Math.round(rate.kgPerWeek * 100) / 100, kind.unit)} per week` : ''}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.icon}>
           <Ionicons name={kind.icon} size={18} color={C.accent} />
@@ -75,11 +89,28 @@ export function MeasurePanel({
       </View>
 
       {entries.length > 1 ? (
-        <LineChart
-          points={entries.map((e) => ({ t: e.measured_at, v: e.value }))}
-          height={chartHeight}
-          format={(v) => fmtMeasure(v, kind.unit)}
-        />
+        <View style={{ gap: S.sm }}>
+          <LineChart
+            points={
+              trend ? trend.map((p) => ({ t: p.t, v: p.v })) : entries.map((e) => ({ t: e.measured_at, v: e.value }))
+            }
+            trend={trend?.map((p) => ({ t: p.t, v: p.trend }))}
+            height={chartHeight}
+            format={(v) => fmtMeasure(v, kind.unit)}
+          />
+          {trend ? (
+            <View style={styles.legend}>
+              <View style={styles.legendItem}>
+                <View style={styles.dot} />
+                <Text style={text.faint}>Scale</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={styles.trendSwatch} />
+                <Text style={text.faint}>Trend (smoothed)</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
       ) : null}
 
       <View style={styles.logRow}>
@@ -136,6 +167,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logRow: { flexDirection: 'row', gap: S.sm },
+  legend: { flexDirection: 'row', gap: S.lg },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.textFaint },
+  trendSwatch: { width: 14, height: 3, borderRadius: 2, backgroundColor: C.accent },
   inputWrap: {
     flex: 1,
     flexDirection: 'row',

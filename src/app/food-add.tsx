@@ -6,9 +6,21 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { FoodRow } from '@/components/food-row';
+import { SavedMealRow } from '@/components/saved-meal-row';
 import { Chip, Empty, text } from '@/components/ui';
 import { dayKey } from '@/lib/calendar';
-import { allFoodItems, logFood, recentRefs, saveProduct } from '@/lib/food-db';
+import { confirm } from '@/lib/dialog';
+import {
+  allFoodItems,
+  deleteSavedMeal,
+  favoriteRefs,
+  logFood,
+  logSavedMeal,
+  recentRefs,
+  savedMeals,
+  saveProduct,
+  thumbsFor,
+} from '@/lib/food-db';
 import { amountLabel, searchFoods, type FoodItem } from '@/lib/foods';
 import { haptic } from '@/lib/haptics';
 import { isBarcode, lookupBarcode, OffError, searchProducts, type OffProduct } from '@/lib/off';
@@ -16,16 +28,18 @@ import { MEALS, mealForTime, mealLabel, type Meal } from '@/lib/recipes';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
-type Filter = 'all' | 'recipes' | 'foods' | 'mine';
+type Filter = 'all' | 'favorites' | 'recipes' | 'foods' | 'mine';
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'all', label: 'All' },
+  { key: 'favorites', label: '★ Favourites' },
   { key: 'recipes', label: 'Recipes' },
   { key: 'foods', label: 'Foods' },
   { key: 'mine', label: 'My foods' },
 ];
 
-function matchesFilter(f: FoodItem, filter: Filter) {
+function matchesFilter(f: FoodItem, filter: Filter, favs?: Set<string>) {
+  if (filter === 'favorites') return !!favs?.has(f.ref);
   if (filter === 'recipes') return !!f.recipe;
   if (filter === 'foods') return !f.recipe;
   if (filter === 'mine') return f.source === 'custom' || f.source === 'my-recipe' || f.source === 'product';
@@ -44,25 +58,44 @@ export default function AddFoodScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [data, reload] = useFocusData(
-    async (d) => ({ items: await allFoodItems(d), recent: await recentRefs(d, meal) }),
-    meal,
-  );
+  const [data, reload] = useFocusData(async (d) => {
+    const [items, recent, favs, meals] = await Promise.all([
+      allFoodItems(d),
+      recentRefs(d, meal),
+      favoriteRefs(d),
+      savedMeals(d, meal),
+    ]);
+    const thumbs = await thumbsFor(
+      d,
+      meals.flatMap((m) => m.items.slice(0, 2).map((i) => i.ref)),
+    );
+    return { items, recent, favs, meals, thumbs };
+  }, meal);
   const items = data?.items ?? [];
+  const favs = useMemo(() => new Set(data?.favs ?? []), [data?.favs]);
 
   const results = useMemo(() => {
-    const pool = items.filter((f) => matchesFilter(f, filter));
+    const pool = items.filter((f) => matchesFilter(f, filter, favs));
     if (query.trim()) return searchFoods(query, pool).slice(0, 40);
     return [];
-  }, [items, query, filter]);
+  }, [items, query, filter, favs]);
 
   const recent = useMemo(() => {
     const map = new Map(items.map((f) => [f.ref, f]));
-    return (data?.recent ?? []).map((r) => map.get(r)).filter((f): f is FoodItem => !!f && matchesFilter(f, filter));
+    return (data?.recent ?? [])
+      .map((r) => map.get(r))
+      .filter((f): f is FoodItem => !!f && filter !== 'favorites' && matchesFilter(f, filter));
   }, [items, data?.recent, filter]);
 
+  const favorites = useMemo(() => {
+    const map = new Map(items.map((f) => [f.ref, f]));
+    return (data?.favs ?? [])
+      .map((r) => map.get(r))
+      .filter((f): f is FoodItem => !!f && (filter === 'favorites' || matchesFilter(f, filter)));
+  }, [items, data?.favs, filter]);
+
   const suggested = useMemo(
-    () => items.filter((f) => f.recipe?.meal === meal && matchesFilter(f, filter)),
+    () => (filter === 'favorites' ? [] : items.filter((f) => f.recipe?.meal === meal && matchesFilter(f, filter))),
     [items, meal, filter],
   );
 
@@ -73,6 +106,23 @@ export default function AddFoodScreen() {
     const g = s?.g ?? 100;
     await logFood(db, { day, meal, item: f, grams: g, amount: amountLabel(s, 1, g) });
     haptic.tap();
+  };
+
+  const addSaved = async (id: number) => {
+    await logSavedMeal(db, id, day, meal);
+    haptic.success();
+  };
+
+  const forgetSaved = async (id: number, name: string) => {
+    const ok = await confirm({
+      title: `Forget "${name}"?`,
+      message: 'It disappears from your saved meals. Days you already logged stay as they are.',
+      confirmLabel: 'Forget',
+      destructive: true,
+    });
+    if (!ok) return;
+    await deleteSavedMeal(db, id);
+    reload();
   };
 
   const searchOnline = async () => {
@@ -130,7 +180,9 @@ export default function AddFoodScreen() {
                 setQuery(t);
                 setError(null);
               }}
-              onSubmitEditing={() => (isBarcode(query) || (results.length === 0 && query.trim()) ? searchOnline() : null)}
+              onSubmitEditing={() =>
+                isBarcode(query) || (results.length === 0 && query.trim()) ? searchOnline() : null
+              }
               placeholder="Search food, recipe or barcode"
               placeholderTextColor={C.textFaint}
               autoFocus={desktop}
@@ -164,14 +216,16 @@ export default function AddFoodScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.list, desktop && styles.wide]}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.list, desktop && styles.wide]}>
         {query.trim() ? (
           <>
             {list(`${results.length} ${results.length === 1 ? 'result' : 'results'}`, results)}
             {!results.length && !showOnline ? (
-              <Empty icon="search-outline" title={`Nothing for "${query.trim()}" yet`} hint="Search supermarket products below." />
+              <Empty
+                icon="search-outline"
+                title={`Nothing for "${query.trim()}" yet`}
+                hint="Search supermarket products below."
+              />
             ) : null}
 
             {showOnline ? (
@@ -215,7 +269,9 @@ export default function AddFoodScreen() {
                 )}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.onlineLabel}>
-                    {isBarcode(query) ? `Look up barcode ${query.trim()}` : `Search supermarket products for "${query.trim()}"`}
+                    {isBarcode(query)
+                      ? `Look up barcode ${query.trim()}`
+                      : `Search supermarket products for "${query.trim()}"`}
                   </Text>
                   <Text style={text.faint}>Open Food Facts · free, millions of products</Text>
                 </View>
@@ -225,10 +281,32 @@ export default function AddFoodScreen() {
           </>
         ) : (
           <>
+            {data?.meals.length && (filter === 'all' || filter === 'favorites') ? (
+              <View style={{ gap: 2 }}>
+                <Text style={[text.label, styles.listTitle]}>Your meals · one tap adds everything</Text>
+                {data.meals.map((m) => (
+                  <SavedMealRow
+                    key={m.id}
+                    meal={m}
+                    thumbs={data.thumbs}
+                    onAdd={() => addSaved(m.id)}
+                    onDelete={() => forgetSaved(m.id, m.name)}
+                  />
+                ))}
+              </View>
+            ) : null}
+            {list('Favourites', favorites)}
             {list('Recent', recent.slice(0, 8))}
             {list(`Recipes for ${mealLabel(meal).toLowerCase()}`, suggested)}
             {filter === 'mine' && !recent.length && !suggested.length ? (
               <Empty icon="person-outline" title="Nothing of your own yet" hint="Create a food or recipe below." />
+            ) : null}
+            {filter === 'favorites' && !favorites.length && !data?.meals.length ? (
+              <Empty
+                icon="star-outline"
+                title="No favourites yet"
+                hint="Tap the star on any food or recipe. On the Food tab, the bookmark next to a meal saves it for one-tap adding."
+              />
             ) : null}
           </>
         )}

@@ -6,20 +6,25 @@ import { C, F } from '@/lib/theme';
 
 export type Point = { t: number; v: number };
 
-/** Simple line chart over time (e.g. body weight), with the area below filled softly. */
+/**
+ * Simple line chart over time (e.g. body weight), with the area below filled softly.
+ * With `trend`, the readings become faint dots and the trend is the line.
+ */
 export function LineChart({
   points,
+  trend,
   height = 160,
   format,
 }: {
   points: Point[];
+  trend?: Point[];
   height?: number;
   format: (v: number) => string;
 }) {
   const [width, setWidth] = useState(0);
   const pad = { top: 14, bottom: 22, left: 4, right: 4 };
 
-  const vs = points.map((p) => p.v);
+  const vs = [...points, ...(trend ?? [])].map((p) => p.v);
   let lo = Math.min(...vs);
   let hi = Math.max(...vs);
   if (hi - lo < 1) {
@@ -37,10 +42,12 @@ export function LineChart({
   const x = (t: number) => pad.left + (points.length < 2 || t1 === t0 ? iw / 2 : ((t - t0) / (t1 - t0)) * iw);
   const y = (v: number) => pad.top + (1 - (v - lo) / (hi - lo)) * ih;
 
-  const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+  const main = trend && trend.length > 1 ? trend : points;
+  const line = main.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
   const area =
-    points.length > 1 ? `${line} L${x(t1).toFixed(1)},${pad.top + ih} L${x(t0).toFixed(1)},${pad.top + ih} Z` : '';
-  const last = points[points.length - 1];
+    main.length > 1 ? `${line} L${x(t1).toFixed(1)},${pad.top + ih} L${x(t0).toFixed(1)},${pad.top + ih} Z` : '';
+  const last = main[main.length - 1];
+  const withTrend = main !== points;
   const date = (t: number) => new Date(t).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
 
   return (
@@ -70,17 +77,20 @@ export function LineChart({
               />
             ))}
             {area ? <Path d={area} fill="url(#fill)" /> : null}
-            {points.length > 1 ? (
+            {withTrend
+              ? points.map((p, i) => <Circle key={`r${i}`} cx={x(p.t)} cy={y(p.v)} r={2.5} fill={C.textFaint} />)
+              : null}
+            {main.length > 1 ? (
               <Path
                 d={line}
                 stroke={C.accent}
-                strokeWidth={2}
+                strokeWidth={withTrend ? 2.5 : 2}
                 fill="none"
                 strokeLinejoin="round"
                 strokeLinecap="round"
               />
             ) : null}
-            {points.length <= 24
+            {!withTrend && points.length <= 24
               ? points.map((p, i) => (
                   <Circle key={i} cx={x(p.t)} cy={y(p.v)} r={2.5} fill={C.bg} stroke={C.accent} strokeWidth={1.5} />
                 ))

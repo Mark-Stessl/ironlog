@@ -1,7 +1,7 @@
 {
   "name": "Ironlog",
   "short_name": "Ironlog",
-  "description": "Personal workout tracker",
+  "description": "Personal workout and food tracker",
   "start_url": "/ironlog/",
   "scope": "/ironlog/",
   "display": "standalone",
@@ -19,7 +19,7 @@
       "type": "image/png"
     },
     {
-      "src": "/ironlog/icon-512.png",
+      "src": "/ironlog/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

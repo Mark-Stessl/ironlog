@@ -31,6 +31,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx expo export --platform web
+      # Lets the home-screen app open offline (see public/sw.js).
+      - run: node scripts/precache.mjs dist
       # Lets links like /ironlog/history work when opened directly.
       - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3

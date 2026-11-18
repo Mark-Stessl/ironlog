@@ -193,7 +193,24 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       `);
     });
   }
-  // Future schema changes: add `if (version < 6) { ... }` blocks here.
+  if (version < 6) {
+    // Favourite foods and saved meals ("usual breakfast"), added again with one tap.
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        CREATE TABLE favorites (ref TEXT PRIMARY KEY, created_at INTEGER NOT NULL);
+        CREATE TABLE saved_meals (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          meal TEXT NOT NULL,
+          items TEXT NOT NULL,            -- JSON: [{ ref, name, brand, grams, amount, n }]
+          created_at INTEGER NOT NULL,
+          used_at INTEGER
+        );
+        PRAGMA user_version = 6;
+      `);
+    });
+  }
+  // Future schema changes: add `if (version < 7) { ... }` blocks here.
 }
 
 // ── Settings ────────────────────────────────────────────────────────────

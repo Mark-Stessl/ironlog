@@ -231,6 +231,7 @@ export async function createCustomFood(db: SQLiteDatabase, f: CustomFood): Promi
 export async function deleteFood(db: SQLiteDatabase, ref: string): Promise<void> {
   if (ref.startsWith('p:')) await db.runAsync('DELETE FROM foods WHERE id = ?', Number(ref.slice(2)));
   if (ref.startsWith('u:')) await db.runAsync('DELETE FROM user_recipes WHERE id = ?', Number(ref.slice(2)));
+  await db.runAsync('DELETE FROM favorites WHERE ref = ?', ref);
 }
 
 export type NewRecipe = {
@@ -279,7 +280,8 @@ export async function thumbsFor(db: SQLiteDatabase, refs: string[]): Promise<Map
       `SELECT id, kind, image FROM foods WHERE id IN (${p.map(() => '?').join(',')})`,
       ...p,
     );
-    for (const r of rows) out.set(`p:${r.id}`, { image: r.image ?? undefined, emoji: r.kind === 'product' ? '🛒' : '🍽️' });
+    for (const r of rows)
+      out.set(`p:${r.id}`, { image: r.image ?? undefined, emoji: r.kind === 'product' ? '🛒' : '🍽️' });
   }
   const u = ids('u:');
   if (u.length) {
@@ -300,7 +302,10 @@ export async function thumbsFor(db: SQLiteDatabase, refs: string[]): Promise<Map
 // ── Meal photos ─────────────────────────────────────────────────────────
 
 export async function dayMealPhotos(db: SQLiteDatabase, day: string): Promise<Partial<Record<Meal, string>>> {
-  const rows = await db.getAllAsync<{ meal: Meal; image: string }>('SELECT meal, image FROM meal_photos WHERE day = ?', day);
+  const rows = await db.getAllAsync<{ meal: Meal; image: string }>(
+    'SELECT meal, image FROM meal_photos WHERE day = ?',
+    day,
+  );
   return Object.fromEntries(rows.map((r) => [r.meal, r.image]));
 }
 
@@ -442,6 +447,129 @@ export async function copyMeal(db: SQLiteDatabase, fromDay: string, toDay: strin
   return rows.length;
 }
 
+// ── Favourites and saved meals ───────────────────────────────────────────
+
+export async function favoriteRefs(db: SQLiteDatabase): Promise<string[]> {
+  const rows = await db.getAllAsync<{ ref: string }>('SELECT ref FROM favorites ORDER BY created_at DESC');
+  return rows.map((r) => r.ref);
+}
+
+export async function isFavorite(db: SQLiteDatabase, ref: string): Promise<boolean> {
+  return !!(await db.getFirstAsync('SELECT 1 FROM favorites WHERE ref = ?', ref));
+}
+
+export async function setFavorite(db: SQLiteDatabase, ref: string, on: boolean): Promise<void> {
+  if (on) await db.runAsync('INSERT OR IGNORE INTO favorites (ref, created_at) VALUES (?, ?)', ref, Date.now());
+  else await db.runAsync('DELETE FROM favorites WHERE ref = ?', ref);
+}
+
+export type SavedItem = { ref: string; name: string; brand: string; grams: number; amount: string; n: Nutrients };
+export type SavedMeal = { id: number; name: string; meal: Meal; items: SavedItem[]; total: Nutrients; usedAt: number };
+
+/** "Oats + Skyr shake", "Oats, Banana + 2 more" */
+export function savedMealName(names: string[]): string {
+  const short = names.map((n) => n.split(',')[0].trim());
+  if (short.length <= 2) return short.join(' + ');
+  return `${short[0]}, ${short[1]} + ${short.length - 2} more`;
+}
+
+const signature = (items: { ref: string; grams: number }[]) =>
+  items
+    .map((i) => `${i.ref}@${Math.round(i.grams)}`)
+    .sort()
+    .join('|');
+
+/**
+ * Saves what's logged for a meal on a day as a usual meal. If the same foods in the
+ * same amounts are already saved, that one is returned instead of a copy.
+ */
+export async function saveMeal(
+  db: SQLiteDatabase,
+  day: string,
+  meal: Meal,
+): Promise<{ meal: SavedMeal; existed: boolean } | null> {
+  const entries = (await dayLog(db, day)).filter((e) => e.meal === meal);
+  if (!entries.length) return null;
+  const items: SavedItem[] = entries.map((e) => ({
+    ref: e.ref,
+    name: e.name,
+    brand: e.brand,
+    grams: e.grams,
+    amount: e.amount,
+    n: e.n,
+  }));
+  const same = (await savedMeals(db)).find((m) => m.meal === meal && signature(m.items) === signature(items));
+  if (same) return { meal: same, existed: true };
+  const now = Date.now();
+  const r = await db.runAsync(
+    'INSERT INTO saved_meals (name, meal, items, created_at, used_at) VALUES (?, ?, ?, ?, ?)',
+    savedMealName(items.map((i) => i.name)),
+    meal,
+    JSON.stringify(items),
+    now,
+    now,
+  );
+  const saved = (await savedMeals(db)).find((m) => m.id === r.lastInsertRowId)!;
+  return { meal: saved, existed: false };
+}
+
+/** All saved meals, the ones for `meal` first, then most recently used. */
+export async function savedMeals(db: SQLiteDatabase, meal?: Meal): Promise<SavedMeal[]> {
+  const rows = await db.getAllAsync<{
+    id: number;
+    name: string;
+    meal: Meal;
+    items: string;
+    created_at: number;
+    used_at: number | null;
+  }>('SELECT * FROM saved_meals ORDER BY COALESCE(used_at, created_at) DESC');
+  const list = rows.map((r) => {
+    const items = parse<SavedItem[]>(r.items, []);
+    return {
+      id: r.id,
+      name: r.name,
+      meal: r.meal,
+      items,
+      total: sum(items.map((i) => i.n)),
+      usedAt: r.used_at ?? r.created_at,
+    };
+  });
+  return meal ? [...list.filter((m) => m.meal === meal), ...list.filter((m) => m.meal !== meal)] : list;
+}
+
+/** Logs every food of a saved meal. Returns the new log entry ids (for Undo). */
+export async function logSavedMeal(db: SQLiteDatabase, id: number, day: string, meal: Meal): Promise<number[]> {
+  const saved = (await savedMeals(db)).find((m) => m.id === id);
+  if (!saved) return [];
+  const ids: number[] = [];
+  const now = Date.now();
+  for (const [i, it] of saved.items.entries()) {
+    const r = await db.runAsync(
+      'INSERT INTO food_log (day, meal, ref, name, brand, grams, amount, nutrients, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      day,
+      meal,
+      it.ref,
+      it.name,
+      it.brand,
+      it.grams,
+      it.amount,
+      JSON.stringify(it.n),
+      now + i,
+    );
+    ids.push(r.lastInsertRowId);
+  }
+  await db.runAsync('UPDATE saved_meals SET used_at = ? WHERE id = ?', now, id);
+  return ids;
+}
+
+export async function deleteSavedMeal(db: SQLiteDatabase, id: number): Promise<void> {
+  await db.runAsync('DELETE FROM saved_meals WHERE id = ?', id);
+}
+
+export async function deleteLogEntries(db: SQLiteDatabase, ids: number[]): Promise<void> {
+  for (const id of ids) await db.runAsync('DELETE FROM food_log WHERE id = ?', id);
+}
+
 // ── Water ───────────────────────────────────────────────────────────────
 
 export async function addWater(db: SQLiteDatabase, day: string, ml: number): Promise<void> {
@@ -493,6 +621,14 @@ export async function setGoalSettings(db: SQLiteDatabase, s: GoalSettings): Prom
 
 export function goalsFrom(s: GoalSettings): Goals {
   return { ...computeGoals(s.profile), ...s.custom };
+}
+
+/** Sets a new calorie goal by hand; fat stays at 30 % of energy, carbs fill the rest. */
+export function withKcalGoal(s: GoalSettings, kcal: number): GoalSettings {
+  const protein = goalsFrom(s).protein;
+  const fat = Math.round((kcal * 0.3) / 9);
+  const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
+  return { ...s, custom: { ...s.custom, kcal, fat, carbs } };
 }
 
 export async function getGoals(db: SQLiteDatabase): Promise<Goals> {

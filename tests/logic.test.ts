@@ -696,3 +696,88 @@ test('profile overview: nutrition averages and weight change', async () => {
   assert.deepEqual(weightChange(w, 0, 200), null); // only one weigh-in, nothing before
   assert.equal(weightChange(w, 400, 500), null);
 });
+
+test('favourites, saved meals and undo restore', async () => {
+  const fdb = await import('../src/lib/food-db');
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const items = await fdb.allFoodItems(db);
+  const banana = items.find((f) => f.ref === 'f:banana')!;
+  const oats = items.find((f) => f.ref === 'r:overnight-oats')!;
+
+  await fdb.setFavorite(db, banana.ref, true);
+  await fdb.setFavorite(db, banana.ref, true); // twice is fine
+  assert.deepEqual(await fdb.favoriteRefs(db), ['f:banana']);
+  assert.equal(await fdb.isFavorite(db, oats.ref), false);
+  await fdb.setFavorite(db, banana.ref, false);
+  assert.deepEqual(await fdb.favoriteRefs(db), []);
+
+  const day = '2026-11-18';
+  assert.equal(await fdb.saveMeal(db, day, 'breakfast'), null); // nothing logged yet
+  await fdb.logFood(db, { day, meal: 'breakfast', item: oats, grams: oats.servings[0].g, amount: '1 serving' });
+  await fdb.logFood(db, { day, meal: 'breakfast', item: banana, grams: 118, amount: '1 medium' });
+  const first = await fdb.saveMeal(db, day, 'breakfast');
+  assert.equal(first?.existed, false);
+  assert.equal(first?.meal.name, 'Berry overnight oats + Banana');
+  assert.equal(first?.meal.items.length, 2);
+  assert.equal((await fdb.saveMeal(db, day, 'breakfast'))?.existed, true); // no duplicate
+
+  const ids = await fdb.logSavedMeal(db, first!.meal.id, '2026-11-19', 'breakfast');
+  assert.equal(ids.length, 2);
+  const next = await fdb.dayLog(db, '2026-11-19');
+  assert.ok(Math.abs(next.reduce((s, e) => s + (e.n.kcal ?? 0), 0) - first!.meal.total.kcal!) < 0.01);
+  await fdb.deleteLogEntries(db, ids);
+  assert.equal((await fdb.dayLog(db, '2026-11-19')).length, 0);
+
+  // Undo after removing one entry puts it back in the same place.
+  const log = await fdb.dayLog(db, day);
+  await fdb.deleteLogEntry(db, log[0].id);
+  await fdb.restoreLogEntry(db, log[0]);
+  assert.deepEqual((await fdb.dayLog(db, day)).map((e) => e.id), log.map((e) => e.id));
+
+  assert.equal(fdb.savedMealName(['Oats, rolled', 'Banana', 'Skyr', 'Honey']), 'Oats, Banana + 2 more');
+  assert.equal((await fdb.savedMeals(db, 'lunch'))[0].meal, 'breakfast');
+  await fdb.deleteSavedMeal(db, first!.meal.id);
+  assert.equal((await fdb.savedMeals(db)).length, 0);
+});
+
+test('weight trend: smoothing, rate and real maintenance calories', async () => {
+  const { weightTrend, trendRate, energyCheck } = await import('../src/lib/weight-trend');
+  const { dayKey } = await import('../src/lib/calendar');
+  const DAY = 86_400_000;
+  const start = new Date(2026, 8, 1, 7, 30).getTime();
+  // 60 days losing 0.5 kg a week, with ±0.8 kg of daily water noise.
+  const noise = [0.8, -0.6, 0.3, -0.8, 0.5, 0, -0.3, 0.7, -0.5, 0.2];
+  const entries = Array.from({ length: 60 }, (_, i) => ({
+    measured_at: start + i * DAY,
+    value: 85 - (0.5 / 7) * i + noise[i % noise.length],
+  }));
+  const trend = weightTrend(entries);
+  assert.equal(trend.length, 60);
+  // The trend wiggles far less than the scale.
+  const jumps = (xs: number[]) => Math.max(...xs.slice(1).map((x, i) => Math.abs(x - xs[i])));
+  assert.ok(jumps(trend.map((p) => p.trend)) < jumps(trend.map((p) => p.v)) / 4);
+
+  const rate = trendRate(trend)!;
+  assert.equal(rate.days, 28);
+  assert.ok(Math.abs(rate.kgPerWeek + 0.5) < 0.12, `rate ${rate.kgPerWeek}`);
+  assert.equal(trendRate(trend.slice(0, 8)), null); // too short
+
+  // Ate 2,000 kcal a day and lost 0.5 kg/week -> maintenance about 2,000 + 550.
+  const intake = new Map(entries.map((e) => [dayKey(e.measured_at), 2000]));
+  const check = energyCheck({ entries, intake, dayKeyOf: dayKey, goal: 2400, aimKcal: -500 });
+  assert.equal(check.kind, 'ok');
+  if (check.kind === 'ok') {
+    assert.ok(Math.abs(check.maintenance - 2550) < 150, `maintenance ${check.maintenance}`);
+    assert.equal(check.suggested, check.maintenance - 500);
+    assert.ok(check.off > 300); // a 2,400 goal is too high to lose weight for this person
+  }
+  // Not enough food logged.
+  const sparse = new Map([...intake].slice(-5));
+  assert.equal(energyCheck({ entries, intake: sparse, dayKeyOf: dayKey, goal: 2000, aimKcal: 0 }).kind, 'need-food');
+  assert.equal(energyCheck({ entries: entries.slice(0, 3), intake, dayKeyOf: dayKey, goal: 2000, aimKcal: 0 }).kind, 'need-weight');
+  // Gaps between weigh-ins: the trend still follows.
+  const weekly = entries.filter((_, i) => i % 7 === 0);
+  const r2 = trendRate(weightTrend(weekly))!;
+  assert.ok(r2.kgPerWeek < -0.3 && r2.kgPerWeek > -0.7, `weekly rate ${r2.kgPerWeek}`);
+});
