@@ -155,10 +155,18 @@ export async function searchProducts(query: string): Promise<OffProduct[]> {
   } catch (e) {
     if (e instanceof OffError && e.kind === 'limit') throw e;
     // Fall back to the classic search endpoint.
-    const data = (await get(
-      `${API}/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&json=1&page_size=24&fields=${FIELDS}`,
-    )) as { products?: Raw[] } | null;
-    hits = data?.products ?? [];
+    try {
+      const data = (await get(
+        `${API}/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&json=1&page_size=24&fields=${FIELDS}`,
+      )) as { products?: Raw[] } | null;
+      hits = data?.products ?? [];
+    } catch (e2) {
+      if (e2 instanceof OffError && e2.kind === 'limit') throw e2;
+      throw new OffError(
+        'Product search is not reachable right now. Scanning the barcode (or typing its numbers) still works.',
+        'offline',
+      );
+    }
   }
   const seen = new Set<string>();
   const out: OffProduct[] = [];
