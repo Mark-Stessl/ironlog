@@ -6,12 +6,17 @@ import type { ScannerProps } from '@/components/barcode-scanner.types';
 import { C, F, R, S } from '@/lib/theme';
 
 /** Native barcode scanner (iOS and Android builds) with expo-camera. */
-export function BarcodeScanner({ onCode, paused }: ScannerProps) {
+export function BarcodeScanner({ onCode, paused, onAvailability }: ScannerProps) {
   const [permission, request] = useCameraPermissions();
 
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain) request();
   }, [permission, request]);
+
+  const ok = !permission || permission.granted;
+  useEffect(() => {
+    onAvailability?.(ok);
+  }, [ok, onAvailability]);
 
   if (!permission) return <View style={styles.wrap} />;
   if (!permission.granted) {

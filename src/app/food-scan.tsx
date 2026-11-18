@@ -21,6 +21,7 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<State>({ kind: 'scanning' });
   const [manual, setManual] = useState('');
+  const [noCamera, setNoCamera] = useState(false);
   const busy = useRef(false);
 
   const handle = async (raw: string) => {
@@ -49,13 +50,15 @@ export default function ScanScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       <Stack.Screen options={{ title: 'Scan barcode' }} />
-      <BarcodeScanner onCode={handle} paused={state.kind !== 'scanning'} />
+      <BarcodeScanner onCode={handle} paused={state.kind !== 'scanning'} onAvailability={(ok) => setNoCamera(!ok)} />
 
-      {/* Viewfinder */}
-      <View style={styles.overlay} pointerEvents="none">
-        <View style={[styles.frame, state.kind === 'looking' && { borderColor: C.accent }]} />
-        <Text style={styles.hint}>Point the camera at the barcode</Text>
-      </View>
+      {/* Viewfinder (hidden when the camera can't be used, so it doesn't cover the scanner's message) */}
+      {noCamera ? null : (
+        <View style={styles.overlay} pointerEvents="none">
+          <View style={[styles.frame, state.kind === 'looking' && { borderColor: C.accent }]} />
+          <Text style={styles.hint}>Point the camera at the barcode</Text>
+        </View>
+      )}
 
       <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, S.lg) }]}>
         {state.kind === 'looking' ? (
@@ -94,7 +97,7 @@ export default function ScanScreen() {
             value={manual}
             onChangeText={(t) => setManual(t.replace(/\D/g, ''))}
             onSubmitEditing={() => handle(manual)}
-            placeholder="Or type the numbers under the barcode"
+            placeholder="Or type the barcode number"
             placeholderTextColor={C.textFaint}
             keyboardType="number-pad"
             returnKeyType="search"

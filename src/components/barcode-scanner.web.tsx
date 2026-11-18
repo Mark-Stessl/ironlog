@@ -11,11 +11,13 @@ import { C, F, S } from '@/lib/theme';
  * getUserMedia and decodes EAN/UPC codes on the device with ZXing (open source,
  * no server, no account).
  */
-export function BarcodeScanner({ onCode, paused }: ScannerProps) {
+export function BarcodeScanner({ onCode, paused, onAvailability }: ScannerProps) {
   const video = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const handler = useRef(onCode);
   handler.current = onCode;
+  const unavailable = useRef(onAvailability);
+  unavailable.current = onAvailability;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
 
@@ -24,7 +26,8 @@ export function BarcodeScanner({ onCode, paused }: ScannerProps) {
     let controls: { stop: () => void } | null = null;
     (async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError('This browser has no camera access. Type the barcode instead.');
+        setError('This browser has no camera access. Type the barcode below instead.');
+        unavailable.current?.(false);
         return;
       }
       try {
@@ -52,6 +55,7 @@ export function BarcodeScanner({ onCode, paused }: ScannerProps) {
             ? 'Camera access was blocked. Allow it in the browser settings, or type the barcode below.'
             : 'The camera could not start. Type the barcode below instead.',
         );
+        unavailable.current?.(false);
       }
     })();
     return () => {

@@ -86,17 +86,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.sm,
     borderRadius: R.md,
   },
-  icon: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: C.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconRecipe: { backgroundColor: C.accentDim, borderColor: C.accentLine },
   name: { color: C.text, fontFamily: F.medium, fontSize: 14 },
   sub: { color: C.textFaint, fontFamily: F.regular, fontSize: 12, marginTop: 1 },
   quick: {
