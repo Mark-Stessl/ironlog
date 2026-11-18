@@ -24,7 +24,7 @@ const PREVIEWS: { name: SoundName; label: string; icon: IconName }[][] = [
 ];
 
 /** Speaker button that opens the sound settings: on/off, volume and previews (all remembered). */
-export function SoundToggle() {
+export function SoundToggle({ size }: { size?: number } = {}) {
   const db = useSQLiteContext();
   const [open, setOpen] = useState(false);
   const [on, setOn] = useState(sound.isEnabled());
@@ -57,6 +57,7 @@ export function SoundToggle() {
       <IconButton
         icon={icon}
         label="Sound settings"
+        size={size}
         color={on ? C.textDim : C.textFaint}
         onPress={() => setOpen(true)}
       />

@@ -210,7 +210,12 @@ export function IconButton({
       hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={(s: PressState) => [styles.iconButton, (s.hovered || s.pressed) && { backgroundColor: C.cardHi }]}>
+      style={(s: PressState) => [
+        styles.iconButton,
+        // Bigger icons get a bigger button so the tap area grows with them.
+        size > 20 && { width: size + 18, height: size + 18, borderRadius: R.md },
+        (s.hovered || s.pressed) && { backgroundColor: C.cardHi },
+      ]}>
       <Ionicons name={icon} size={size} color={color} />
     </Pressable>
   );

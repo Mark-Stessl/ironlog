@@ -384,9 +384,16 @@ export default function FoodTab() {
               {data?.settings.profile ? 'Goals from your body profile' : 'EU reference intakes'}
             </Text>
           </View>
-          <IconButton icon="book-outline" label="All recipes" onPress={() => router.push('/recipes')} />
-          <SoundToggle />
-          <IconButton icon="options-outline" label="Nutrition goals" onPress={() => router.push('/nutrition-goals')} />
+          <View style={styles.headIcons}>
+            <IconButton icon="book-outline" label="All recipes" size={25} onPress={() => router.push('/recipes')} />
+            <SoundToggle size={25} />
+            <IconButton
+              icon="options-outline"
+              label="Nutrition goals"
+              size={25}
+              onPress={() => router.push('/nutrition-goals')}
+            />
+          </View>
         </View>
 
         <View style={styles.dayNav}>
@@ -500,6 +507,7 @@ function EntryRow({
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'flex-end', gap: S.md },
+  headIcons: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   dayNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: S.xs },
   day: { color: C.text, fontFamily: F.displaySemi, fontSize: 16 },
   columns: { flexDirection: 'row', alignItems: 'flex-start', gap: S.xl },
