@@ -11,6 +11,7 @@ import { CountUp } from '@/components/count-up';
 import { MuscleBars } from '@/components/muscle-bars';
 import { RadarChart } from '@/components/radar-chart';
 import { Card, Chip, Empty, Page, SectionTitle, text, type IconName } from '@/components/ui';
+import { backupDue } from '@/lib/backup';
 import { dayKey, dayStreak } from '@/lib/calendar';
 import {
   getSetting,
@@ -80,6 +81,7 @@ export default function ProfileTab() {
       workoutsBetween(db, 0, Date.now() + 1),
       listRestDays(db),
     ]);
+    const lastBackup = Number(await getSetting(db, 'last_backup', '0')) || null;
     const streak = dayStreak(new Set([...workouts.map((w) => dayKey(w.started_at)), ...rest]));
     return {
       name,
@@ -87,6 +89,7 @@ export default function ProfileTab() {
       exercises: exercises.length,
       weight: latest[WEIGHT.key]?.value,
       streak,
+      backupDue: backupDue(lastBackup) && totals.workouts > 0,
     };
   });
 
@@ -98,7 +101,7 @@ export default function ProfileTab() {
     <Page maxWidth={1000} topInset>
       {profile ? (
         <>
-          <ProfileHead name={profile.name} first={profile.totals.first} />
+          <ProfileHead name={profile.name} first={profile.totals.first} backupDue={profile.backupDue} />
           <View style={styles.totals}>
             <Total label="Workouts" value={profile.totals.workouts} big />
             <Total label="Total volume" value={profile.totals.volume} format={fmtVolume} />
@@ -248,7 +251,15 @@ export default function ProfileTab() {
 
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
-function ProfileHead({ name: saved, first }: { name: string; first: number | null }) {
+function ProfileHead({
+  name: saved,
+  first,
+  backupDue: due,
+}: {
+  name: string;
+  first: number | null;
+  backupDue: boolean;
+}) {
   const db = useSQLiteContext();
   const [name, setName] = useState(saved);
   const [focused, setFocused] = useState(false);
@@ -306,6 +317,15 @@ function ProfileHead({ name: saved, first }: { name: string; first: number | nul
         </View>
         <Text style={text.dim}>{since}</Text>
       </View>
+      <Pressable
+        onPress={() => router.push('/settings')}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={due ? 'Settings (a backup is due)' : 'Settings'}
+        style={({ pressed }) => [styles.cog, pressed && { transform: [{ scale: 0.94 }], opacity: 0.85 }]}>
+        <Ionicons name="settings-outline" size={23} color={C.accent} />
+        {due ? <View style={styles.cogDot} /> : null}
+      </Pressable>
     </View>
   );
 }
@@ -391,6 +411,27 @@ function Summary({
 }
 
 const styles = StyleSheet.create({
+  cog: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.accentDim,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+  },
+  cogDot: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    backgroundColor: C.gold,
+    borderWidth: 2,
+    borderColor: C.bg,
+  },
   head: {
     flexDirection: 'row',
     alignItems: 'center',

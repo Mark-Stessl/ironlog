@@ -831,3 +831,63 @@ test('overview: weekly totals for the progress chart', async () => {
   // Weeks are 7 days apart in calendar terms, also across the end of daylight saving time (Oct 25).
   for (let i = 1; i < weeks.length; i++) assert.equal(new Date(weeks[i].start).getDay(), 1);
 });
+
+test('backup: export, check and restore everything', async () => {
+  const bk = await import('../src/lib/backup');
+  const fdb = await import('../src/lib/food-db');
+  const db = fakeDb();
+  await dbm.migrate(db);
+  // Some data: a finished workout, food, water, a weight, a setting, a saved meal.
+  const id = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, id, (await dbm.listExercises(db))[0].id);
+  const we = await db.getFirstAsync('SELECT id FROM workout_exercises WHERE workout_id = ?', id);
+  await dbm.addSet(db, we.id);
+  await db.runAsync('UPDATE sets SET weight = 50, reps = 8, done = 1 WHERE workout_exercise_id = ?', we.id);
+  await dbm.finishWorkout(db, id);
+  const items = await fdb.allFoodItems(db);
+  const banana = items.find((f) => f.ref === 'f:banana')!;
+  await fdb.logFood(db, { day: '2026-11-18', meal: 'breakfast', item: banana, grams: 118, amount: '1 medium' });
+  await fdb.addWater(db, '2026-11-18', 500);
+  await dbm.addMeasurement(db, 'weight', 80.5);
+  await dbm.setSetting(db, 'profile_name', 'Mark');
+  await fdb.saveMeal(db, '2026-11-18', 'breakfast');
+
+  const backup = await bk.createBackup(db);
+  assert.equal(backup.app, 'ironlog');
+  assert.equal(backup.version, 6);
+  assert.deepEqual(bk.summarize(backup), { workouts: 1, foodDays: 1, measurements: 1, recipes: 0, photos: 0 });
+  const text = JSON.stringify(backup);
+  assert.match(bk.backupFileName(new Date(2026, 10, 8)), /^ironlog-backup-2026-11-08\.json$/);
+
+  // A fresh install, then restore.
+  const db2 = fakeDb();
+  await dbm.migrate(db2);
+  await dbm.setSetting(db2, 'profile_name', 'Someone else');
+  await bk.restoreBackup(db2, bk.parseBackup(text, 6));
+  assert.equal(await dbm.getSetting(db2, 'profile_name', ''), 'Mark');
+  assert.equal((await fdb.dayLog(db2, '2026-11-18')).length, 1);
+  assert.equal(await fdb.dayWater(db2, '2026-11-18'), 500);
+  assert.equal((await dbm.listFinishedWorkouts(db2)).length, 1);
+  assert.equal((await fdb.savedMeals(db2)).length, 1);
+  assert.deepEqual(await bk.createBackup(db2).then((b) => b.tables), backup.tables);
+  // New rows after a restore get fresh ids (no clashes with restored ones).
+  await fdb.logFood(db2, { day: '2026-11-19', meal: 'lunch', item: banana, grams: 100, amount: '100 g' });
+  assert.equal((await fdb.dayLog(db2, '2026-11-19')).length, 1);
+
+  // Bad files are refused with a clear message and change nothing.
+  assert.throws(() => bk.parseBackup('not json', 6), /couldn't be read/);
+  assert.throws(() => bk.parseBackup('{"app":"other","tables":{}}', 6), /isn't an Ironlog backup/);
+  assert.throws(() => bk.parseBackup(JSON.stringify({ ...backup, version: 99 }), 6), /newer version/);
+});
+
+test('backup reminder wording', async () => {
+  const { backupAge, backupDue } = await import('../src/lib/backup');
+  const now = new Date(2026, 10, 18, 12).getTime();
+  assert.equal(backupAge(null, now), 'No backup yet');
+  assert.equal(backupAge(now - 3600_000, now), 'Last backup: today');
+  assert.equal(backupAge(now - 30 * 3600_000, now), 'Last backup: yesterday');
+  assert.equal(backupAge(now - 5 * 86_400_000, now), 'Last backup: 5 days ago');
+  assert.equal(backupDue(null, now), true);
+  assert.equal(backupDue(now - 10 * 86_400_000, now), false);
+  assert.equal(backupDue(now - 15 * 86_400_000, now), true);
+});

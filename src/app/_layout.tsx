@@ -81,6 +81,7 @@ export default function RootLayout() {
                 <Stack.Screen name="food-new" options={{ title: 'New food' }} />
                 <Stack.Screen name="recipe-new" options={{ title: 'New recipe' }} />
                 <Stack.Screen name="recipes" options={{ title: '' }} />
+                <Stack.Screen name="settings" options={{ title: '' }} />
                 <Stack.Screen name="nutrition-goals" options={{ title: 'Nutrition goals' }} />
               </Stack>
             </View>
