@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 
+import { dayKey } from '@/lib/calendar';
 import { C, F, S } from '@/lib/theme';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -28,7 +29,16 @@ export function weekStreak(finishedAt: number[], now = Date.now()): number {
 }
 
 /** Monday–Sunday of the current week; days you trained light up. */
-export function WeekStrip({ finishedAt, now = Date.now() }: { finishedAt: number[]; now?: number }) {
+export function WeekStrip({
+  finishedAt,
+  restDays = [],
+  now = Date.now(),
+}: {
+  finishedAt: number[];
+  restDays?: string[];
+  now?: number;
+}) {
+  const rest = new Set(restDays);
   const monday = startOfWeek(now);
   const today = new Date(now).setHours(0, 0, 0, 0);
   const trained = new Set(finishedAt.map((t) => new Date(t).setHours(0, 0, 0, 0)));
@@ -41,6 +51,7 @@ export function WeekStrip({ finishedAt, now = Date.now() }: { finishedAt: number
           const day = new Date(monday + i * DAY + 12 * 60 * 60 * 1000).setHours(0, 0, 0, 0); // DST-safe
           const done = trained.has(day);
           const isToday = day === today;
+          const isRest = !done && rest.has(dayKey(day));
           return (
             <View key={i} style={styles.day}>
               <Text style={[styles.label, isToday && { color: C.text }]}>{label}</Text>
@@ -53,6 +64,8 @@ export function WeekStrip({ finishedAt, now = Date.now() }: { finishedAt: number
                     style={styles.dotDone}>
                     <Ionicons name="checkmark" size={12} color={C.onAccent} />
                   </Animated.View>
+                ) : isRest ? (
+                  <Ionicons name="moon" size={10} color={C.textDim} />
                 ) : null}
               </View>
             </View>

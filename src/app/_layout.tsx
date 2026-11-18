@@ -64,6 +64,10 @@ export default function RootLayout() {
                 <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
                 <Stack.Screen name="exercise-picker" options={{ title: 'Add exercise', presentation: 'modal' }} />
                 <Stack.Screen name="exercise-new" options={{ title: 'New exercise', presentation: 'modal' }} />
+                <Stack.Screen name="exercises" options={{ title: '' }} />
+                <Stack.Screen name="calendar" options={{ title: '' }} />
+                <Stack.Screen name="measures" options={{ title: '' }} />
+                <Stack.Screen name="measure/[kind]" options={{ title: '' }} />
               </Stack>
             </View>
           </View>

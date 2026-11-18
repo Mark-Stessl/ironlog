@@ -12,7 +12,7 @@ import { C, F, R, S } from '@/lib/theme';
 
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
-const NAV: { label: string; icon: IconName; href: '/' | '/history' | '/stats' | '/exercises'; match: (p: string) => boolean }[] = [
+const NAV: { label: string; icon: IconName; href: '/' | '/history' | '/profile'; match: (p: string) => boolean }[] = [
   {
     label: 'Workout',
     icon: 'barbell-outline',
@@ -20,8 +20,12 @@ const NAV: { label: string; icon: IconName; href: '/' | '/history' | '/stats' | 
     match: (p) => p === '/' || p.startsWith('/workout') || p.startsWith('/routine'),
   },
   { label: 'History', icon: 'time-outline', href: '/history', match: (p) => p.startsWith('/history') },
-  { label: 'Stats', icon: 'stats-chart-outline', href: '/stats', match: (p) => p.startsWith('/stats') },
-  { label: 'Exercises', icon: 'search-outline', href: '/exercises', match: (p) => p.startsWith('/exercise') },
+  {
+    label: 'Profile',
+    icon: 'person-circle-outline',
+    href: '/profile',
+    match: (p) => ['/profile', '/exercise', '/calendar', '/measure'].some((x) => p.startsWith(x)),
+  },
 ];
 
 /** Desktop navigation, like Nightshelf's sidebar and Hevy's web app. */

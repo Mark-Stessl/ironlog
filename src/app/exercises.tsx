@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ExerciseDetail } from '@/components/exercise-detail';
 import { ExerciseSearch } from '@/components/exercise-search';
@@ -10,9 +9,8 @@ import { listExercises } from '@/lib/db';
 import { C, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
-export default function ExercisesTab() {
+export default function ExercisesScreen() {
   const desktop = useIsDesktop();
-  const insets = useSafeAreaInsets();
   const [exercises] = useFocusData(listExercises);
   const [selected, setSelected] = useState<number | null>(null);
 
@@ -29,7 +27,7 @@ export default function ExercisesTab() {
     />
   );
 
-  if (!desktop) return <View style={{ flex: 1, paddingTop: insets.top }}>{search}</View>;
+  if (!desktop) return <View style={{ flex: 1 }}>{search}</View>;
 
   // Desktop: library on the left, details of the selected exercise on the right (like Hevy's web app).
   const shown = selected ?? exercises?.[0]?.id ?? null;

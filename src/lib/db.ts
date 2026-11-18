@@ -152,7 +152,23 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       await db.execAsync('PRAGMA user_version = 2');
     });
   }
-  // Future schema changes: add `if (version < 3) { ... }` blocks here.
+  if (version < 3) {
+    // Rest days in the calendar and body measurements (weight, waist, ...).
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        CREATE TABLE rest_days (day TEXT PRIMARY KEY);
+        CREATE TABLE measurements (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          value REAL NOT NULL,
+          measured_at INTEGER NOT NULL
+        );
+        CREATE INDEX measurements_kind ON measurements (kind, measured_at);
+        PRAGMA user_version = 3;
+      `);
+    });
+  }
+  // Future schema changes: add `if (version < 4) { ... }` blocks here.
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
@@ -670,4 +686,97 @@ export async function saveWorkoutAsRoutine(db: SQLiteDatabase, workoutId: number
     );
   });
   return routineId;
+}
+
+// ── Profile, calendar and measurements ─────────────────────────────────
+
+export type ProfileTotals = {
+  workouts: number;
+  volume: number;
+  sets: number;
+  first: number | null;
+};
+
+/** Everything since the first workout. */
+export async function profileTotals(db: SQLiteDatabase): Promise<ProfileTotals> {
+  const w = await db.getFirstAsync<{ n: number; first: number | null }>(
+    'SELECT COUNT(*) AS n, MIN(started_at) AS first FROM workouts WHERE finished_at IS NOT NULL',
+  );
+  const s = await db.getFirstAsync<{ sets: number; volume: number | null }>(
+    `SELECT COUNT(*) AS sets, SUM(COALESCE(s.weight, 0) * COALESCE(s.reps, 0)) AS volume
+     FROM sets s
+     JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN workouts w ON w.id = we.workout_id
+     WHERE s.done = 1 AND w.finished_at IS NOT NULL`,
+  );
+  return {
+    workouts: w?.n ?? 0,
+    first: w?.first ?? null,
+    sets: s?.sets ?? 0,
+    volume: s?.volume ?? 0,
+  };
+}
+
+export type CalendarWorkout = {
+  id: number;
+  name: string;
+  started_at: number;
+  finished_at: number;
+};
+
+/** Finished workouts that started between two times. */
+export function workoutsBetween(db: SQLiteDatabase, from: number, to: number): Promise<CalendarWorkout[]> {
+  return db.getAllAsync<CalendarWorkout>(
+    'SELECT id, name, started_at, finished_at FROM workouts WHERE finished_at IS NOT NULL AND started_at >= ? AND started_at < ? ORDER BY started_at',
+    from,
+    to,
+  );
+}
+
+/** Rest days as "YYYY-MM-DD" keys. */
+export async function listRestDays(db: SQLiteDatabase): Promise<string[]> {
+  const rows = await db.getAllAsync<{ day: string }>('SELECT day FROM rest_days ORDER BY day');
+  return rows.map((r) => r.day);
+}
+
+export async function setRestDay(db: SQLiteDatabase, day: string, rest: boolean): Promise<void> {
+  if (rest) await db.runAsync('INSERT OR IGNORE INTO rest_days (day) VALUES (?)', day);
+  else await db.runAsync('DELETE FROM rest_days WHERE day = ?', day);
+}
+
+export type Measurement = {
+  id: number;
+  kind: string;
+  value: number;
+  measured_at: number;
+};
+
+export function listMeasurements(db: SQLiteDatabase, kind: string): Promise<Measurement[]> {
+  return db.getAllAsync<Measurement>('SELECT * FROM measurements WHERE kind = ? ORDER BY measured_at, id', kind);
+}
+
+/** Latest and previous value of every kind that has entries. */
+export async function latestMeasurements(
+  db: SQLiteDatabase,
+): Promise<Record<string, { value: number; prev: number | null; at: number; count: number }>> {
+  const rows = await db.getAllAsync<Measurement>('SELECT * FROM measurements ORDER BY measured_at, id');
+  const out: Record<string, { value: number; prev: number | null; at: number; count: number }> = {};
+  for (const r of rows) {
+    const cur = out[r.kind];
+    out[r.kind] = {
+      value: r.value,
+      prev: cur ? cur.value : null,
+      at: r.measured_at,
+      count: (cur?.count ?? 0) + 1,
+    };
+  }
+  return out;
+}
+
+export async function addMeasurement(db: SQLiteDatabase, kind: string, value: number, at = Date.now()): Promise<void> {
+  await db.runAsync('INSERT INTO measurements (kind, value, measured_at) VALUES (?, ?, ?)', kind, value, at);
+}
+
+export async function deleteMeasurement(db: SQLiteDatabase, id: number): Promise<void> {
+  await db.runAsync('DELETE FROM measurements WHERE id = ?', id);
 }

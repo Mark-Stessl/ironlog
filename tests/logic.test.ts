@@ -388,3 +388,63 @@ test('database: stat sets for a period and a single workout', async () => {
   assert.equal((await dbm.statSets(db, Date.now() + 5000, Date.now() + 9000)).length, 0);
   assert.ok((await dbm.trainingTime(db, 0, Date.now() + 1000)) >= 0);
 });
+
+test('calendar: month grid, day keys and streak with rest days', async () => {
+  const { monthGrid, dayKey, dayStreak } = await import('../src/lib/calendar');
+  const nov = monthGrid(2026, 10); // November 2026 starts on a Sunday
+  assert.deepEqual(nov[0].slice(5), [null, '2026-11-01']);
+  assert.equal(nov.flat().filter(Boolean).length, 30);
+  assert.equal(nov.every((w) => w.length === 7), true);
+  const now = new Date(2026, 10, 18, 15).getTime();
+  assert.equal(dayKey(now), '2026-11-18');
+  // Trained 16th, rest 17th, today (18th) not done yet: streak still 2.
+  assert.equal(dayStreak(new Set(['2026-11-16', '2026-11-17']), now), 2);
+  assert.equal(dayStreak(new Set(['2026-11-16', '2026-11-17', '2026-11-18']), now), 3);
+  assert.equal(dayStreak(new Set(['2026-11-15']), now), 0);
+});
+
+test('database: rest days, measurements and profile totals', async () => {
+  const db = fakeDb();
+  await dbm.migrate(db);
+  await dbm.setRestDay(db, '2026-11-17', true);
+  await dbm.setRestDay(db, '2026-11-17', true); // twice is harmless
+  assert.deepEqual(await dbm.listRestDays(db), ['2026-11-17']);
+  await dbm.setRestDay(db, '2026-11-17', false);
+  assert.deepEqual(await dbm.listRestDays(db), []);
+
+  await dbm.addMeasurement(db, 'weight', 82.4, 1000);
+  await dbm.addMeasurement(db, 'weight', 81.9, 2000);
+  await dbm.addMeasurement(db, 'waist', 84, 1500);
+  const w = await dbm.listMeasurements(db, 'weight');
+  assert.deepEqual(w.map((m) => m.value), [82.4, 81.9]);
+  const latest = await dbm.latestMeasurements(db);
+  assert.equal(latest.weight.value, 81.9);
+  assert.equal(latest.weight.prev, 82.4);
+  assert.equal(latest.waist.prev, null);
+  await dbm.deleteMeasurement(db, w[1].id);
+  assert.equal((await dbm.latestMeasurements(db)).weight.value, 82.4);
+
+  assert.deepEqual(await dbm.profileTotals(db), { workouts: 0, first: null, sets: 0, volume: 0 });
+  const lp = (await dbm.listExercises(db)).find((e) => e.name === 'Leg Press')!;
+  const id = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, id, lp.id);
+  const d = (await dbm.getWorkoutDetail(db, id))!;
+  await dbm.updateSet(db, d.exercises[0].sets[0].id, { weight: 100, reps: 10, done: true });
+  await dbm.finishWorkout(db, id);
+  const totals = await dbm.profileTotals(db);
+  assert.equal(totals.workouts, 1);
+  assert.equal(totals.sets, 1);
+  assert.equal(totals.volume, 1000);
+  assert.ok(totals.first);
+  assert.equal((await dbm.workoutsBetween(db, 0, Date.now() + 1000)).length, 1);
+});
+
+test('measures: formatting and typo check', async () => {
+  const { fmtMeasure, fmtChange, validMeasure } = await import('../src/lib/measures');
+  assert.equal(fmtMeasure(82.44, 'kg'), '82.4 kg');
+  assert.equal(fmtMeasure(38, 'cm'), '38 cm');
+  assert.equal(fmtChange(-0.5, 'kg'), '−0.5 kg');
+  assert.equal(fmtChange(0.02, 'kg'), 'No change');
+  assert.equal(validMeasure(824, 'kg'), false);
+  assert.equal(validMeasure(82.4, 'kg'), true);
+});

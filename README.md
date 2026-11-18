@@ -25,7 +25,10 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Routine changes**: finish a routine workout that differed from the plan and choose to update the routine, save it as a new one, or keep the old one
 - **PR celebrations**: beat your heaviest weight, your reps at that weight, or your estimated 1RM and you get confetti, a "New PR" banner and a gold set row. One set can beat up to three records at once (tap the trophy to see them), and if a later set beats them again only the newest one counts
 - **Workout complete screen** with your records, counting-up stats, which workout number it was and a body heatmap of the muscles you trained
-- **Stats** page per week, month or year: totals compared with the previous period, a muscle distribution chart (Chest, Back, Shoulders, Arms, Legs, Core) and a body heatmap with sets per muscle
+- **Profile** with your name, total workouts since you started, total volume and sets, and shortcuts to the exercise library, calendar and measures
+- **Statistics** (on the profile) per week, month or year: totals compared with the previous period, a muscle distribution chart (Chest, Back, Shoulders, Arms, Legs, Core) and a body heatmap with sets per muscle
+- **Calendar** of the days you trained; days without a workout can be marked as rest days, which keep your day streak going and show as a moon on the home screen
+- **Measures**: body weight with a chart and history, plus optional body fat and body measurements (neck, chest, arms, waist, thighs, ...)
 - **Week strip and streak** on the home screen
 - **Personal records** per exercise (heaviest set, estimated 1RM, best session volume) and a trophy on sets that beat your previous best weight
 
@@ -62,7 +65,11 @@ The web version uses the same code and keeps its data in the browser, separate f
 src/app/                 screens (Expo Router, one file per screen)
   (tabs)/index.tsx       Workout tab: start a workout, routines
   (tabs)/history.tsx     finished workouts
-  (tabs)/exercises.tsx   exercise library with search
+  (tabs)/profile.tsx     profile, totals and statistics
+  exercises.tsx          exercise library with search
+  calendar.tsx           training and rest days
+  measures.tsx           body weight and measurements
+  measure/[kind].tsx     history of one measurement
   workout/[id].tsx       running workout / summary of a finished one
   routine/[id].tsx       routine editor
   exercise/[id].tsx      records and history of one exercise

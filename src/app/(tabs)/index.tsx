@@ -9,7 +9,14 @@ import { Elapsed } from '@/components/elapsed';
 import { SoundToggle } from '@/components/sound-toggle';
 import { WeekStrip, startOfWeek } from '@/components/week-strip';
 import { Button, Empty, Page, PageHeader, SectionTitle, Stat, text } from '@/components/ui';
-import { createRoutine, getActiveWorkout, listFinishedWorkouts, listRoutines, startWorkout } from '@/lib/db';
+import {
+  createRoutine,
+  getActiveWorkout,
+  listFinishedWorkouts,
+  listRestDays,
+  listRoutines,
+  startWorkout,
+} from '@/lib/db';
 import { confirm } from '@/lib/dialog';
 import { fmtVolume, plural } from '@/lib/format';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
@@ -24,6 +31,7 @@ export default function WorkoutTab() {
     active: await getActiveWorkout(d),
     routines: await listRoutines(d),
     finished: await listFinishedWorkouts(d),
+    rest: await listRestDays(d),
   }));
   const active = data?.active ?? null;
   const routines = data?.routines ?? [];
@@ -58,7 +66,7 @@ export default function WorkoutTab() {
         right={<SoundToggle />}
       />
 
-      <WeekStrip finishedAt={finishedAt} />
+      <WeekStrip finishedAt={finishedAt} restDays={data?.rest} />
 
       <View style={styles.weekRow}>
         <Stat label="This week" value={`${week.length} ${week.length === 1 ? 'workout' : 'workouts'}`} />
