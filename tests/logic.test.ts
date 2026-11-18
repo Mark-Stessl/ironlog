@@ -891,3 +891,23 @@ test('backup reminder wording', async () => {
   assert.equal(backupDue(now - 10 * 86_400_000, now), false);
   assert.equal(backupDue(now - 15 * 86_400_000, now), true);
 });
+
+test('exercise search forgives typos: swaps, missing letters, no spaces, muscles', () => {
+  const first = (q: string) => names(q)[0] ?? '';
+  assert.match(first('benhc press'), /^Bench Press/);
+  assert.match(first('sqaut'), /^Squat/);
+  assert.match(first('dedlift'), /Deadlift/);
+  assert.match(first('latpulldown'), /^Lat Pulldown/);
+  assert.match(first('shoudlers'), /Shoulder|Lateral|Overhead/);
+  assert.match(first('bicpe curl'), /^Bicep Curl/);
+  assert.match(first('hip thurst'), /^Hip Thrust/);
+  assert.match(first('calf rasie'), /Calf Raise/);
+  assert.match(first('rwo'), /Row/);
+  // Correct spellings still win over typo guesses, and nonsense finds nothing.
+  assert.match(first('row'), /Row/);
+  assert.deepEqual(names('pizza'), []);
+  assert.deepEqual(names('xq'), []);
+  const { searchExercisesInfo } = require('../src/lib/search');
+  assert.equal(searchExercisesInfo('sqaut', lib).typo, true);
+  assert.equal(searchExercisesInfo('squat', lib).typo, false);
+});

@@ -56,29 +56,51 @@ export function normalize(s: string): string {
     .trim();
 }
 
-/** Edit distance, stops caring once it exceeds `max`. */
+/**
+ * Edit distance where swapping two neighbouring letters counts as one typo
+ * ("sqaut" -> "squat"). Stops caring once it exceeds `max`.
+ */
 export function editDistance(a: string, b: string, max: number): number {
   if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev2: number[] = [];
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   for (let i = 1; i <= a.length; i++) {
     const cur = [i];
     let rowMin = i;
     for (let j = 1; j <= b.length; j++) {
-      const v = Math.min(
-        prev[j] + 1,
-        cur[j - 1] + 1,
-        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
+      let v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, prev2[j - 2] + 1);
       cur.push(v);
       if (v < rowMin) rowMin = v;
     }
     if (rowMin > max) return max + 1;
+    prev2 = prev;
     prev = cur;
   }
   return prev[b.length];
 }
 
-const FUZZY = 20;
+/** How many typos a typed word may have: none for 1-2 letters, 1 up to 6, 2 from 7. */
+function typoBudget(token: string): number {
+  return token.length < 3 ? 0 : token.length >= 7 ? 2 : 1;
+}
+
+/**
+ * Smallest typo distance between `token` and the start of `word`. Compares with
+ * starts one letter shorter or longer too, so missing or extra letters count once
+ * ("dedlift" -> "deadlift", "sqquat" -> "squat").
+ */
+function typoDistance(token: string, word: string, max: number): number {
+  let best = max + 1;
+  for (const len of [token.length - 1, token.length, token.length + 1]) {
+    if (len < 2 || len > word.length) continue;
+    // A short word must be typed (nearly) whole: "rwo" may mean "row", not "rowing".
+    if (token.length <= 3 && word.length > len + 1) continue;
+    best = Math.min(best, editDistance(token, word.slice(0, len), max));
+    if (best === 0) break;
+  }
+  return best;
+}
 
 function tokenScore(
   token: string,
@@ -86,38 +108,54 @@ function tokenScore(
   aliasPhrases: string[],
   aliasWords: string[],
   ex: Searchable,
-): number {
-  if (nameWords[0]?.startsWith(token)) return 100;
-  if (nameWords.some((w) => w.startsWith(token))) return 80;
+  joined: string[],
+): [number, boolean] {
+  if (nameWords[0]?.startsWith(token)) return [100, false];
+  if (nameWords.some((w) => w.startsWith(token))) return [80, false];
   // "beinpresse" is the start of an alternative name.
-  if (aliasPhrases.some((p) => p.startsWith(token))) return 78;
+  if (aliasPhrases.some((p) => p.startsWith(token))) return [78, false];
 
   const muscle = normalize(ex.muscle);
   const equipment = normalize(ex.equipment);
   if (muscle.startsWith(token) || equipment.split(' ').some((w) => w.startsWith(token))) {
-    return 75;
+    return [75, false];
   }
   if (token.length >= 2) {
     for (const key in MUSCLE_SYNONYMS) {
-      if (key.startsWith(token) && MUSCLE_SYNONYMS[key].includes(ex.muscle)) return 75;
+      if (key.startsWith(token) && MUSCLE_SYNONYMS[key].includes(ex.muscle)) return [75, false];
     }
   }
-  if (aliasWords.some((w) => w.startsWith(token))) return 65;
+  // Typed without spaces: "latpulldown", "legpress".
+  if (token.length >= 5 && joined.some((j) => j.startsWith(token))) return [72, false];
+  if (aliasWords.some((w) => w.startsWith(token))) return [65, false];
 
   if (token.length >= 3) {
-    if (nameWords.some((w) => w.includes(token))) return 40;
-    if (aliasWords.some((w) => w.includes(token))) return 30;
+    if (nameWords.some((w) => w.includes(token))) return [40, false];
+    if (aliasWords.some((w) => w.includes(token))) return [30, false];
   }
 
-  // Typo tolerance: compare against the start of each word.
-  if (token.length >= 4) {
-    const max = token.length >= 7 ? 2 : 1;
-    const words = nameWords.concat(aliasWords);
-    for (const w of words) {
-      if (editDistance(token, w.slice(0, token.length), max) <= max) return FUZZY;
+  // Typos. Closer spellings and name words rank higher than alias or muscle words.
+  const max = typoBudget(token);
+  if (max) {
+    const muscleWords = [muscle, ...equipment.split(' ')];
+    for (const key in MUSCLE_SYNONYMS) if (MUSCLE_SYNONYMS[key].includes(ex.muscle)) muscleWords.push(key);
+    const groups: [string[], number][] = [
+      [nameWords, 24],
+      [joined, 22],
+      [aliasWords, 18],
+      [muscleWords, 16],
+    ];
+    let best = 0;
+    for (const [words, base] of groups) {
+      for (const [i, w] of words.entries()) {
+        const d = typoDistance(token, w, max);
+        // +4 when it's the name's first word: "sqaut" -> "Squat" before "Split Squat".
+        if (d <= max) best = Math.max(best, base - d * 3 + (words === nameWords && i === 0 ? 4 : 0));
+      }
     }
+    if (best) return [best, true];
   }
-  return 0;
+  return [0, false];
 }
 
 function match(query: string, ex: Searchable): { score: number; fuzzy: boolean } {
@@ -128,13 +166,14 @@ function match(query: string, ex: Searchable): { score: number; fuzzy: boolean }
   const nameWords = name.split(' ');
   const aliasPhrases = ex.aliases.split(',').map(normalize).filter(Boolean);
   const aliasWords = aliasPhrases.flatMap((p) => p.split(' '));
+  const joined = [name, ...aliasPhrases].map((p) => p.replace(/ /g, ''));
 
   let total = 0;
   let fuzzy = false;
   for (const t of tokens) {
-    const s = tokenScore(t, nameWords, aliasPhrases, aliasWords, ex);
+    const [s, typo] = tokenScore(t, nameWords, aliasPhrases, aliasWords, ex, joined);
     if (s === 0) return { score: 0, fuzzy: false }; // every typed word has to match something
-    if (s === FUZZY) fuzzy = true;
+    if (typo) fuzzy = true;
     total += s;
   }
   if (tokens.length > 1 && name.startsWith(q)) total += 30;
@@ -155,6 +194,15 @@ export function searchExercises<T extends Searchable>(
   all: T[],
   filter?: { muscle?: string | null; equipment?: string | null },
 ): T[] {
+  return searchExercisesInfo(query, all, filter).results;
+}
+
+/** Like searchExercises, and says whether the results are guesses for a misspelling. */
+export function searchExercisesInfo<T extends Searchable>(
+  query: string,
+  all: T[],
+  filter?: { muscle?: string | null; equipment?: string | null },
+): { results: T[]; typo: boolean } {
   let scored: { ex: T; score: number; fuzzy: boolean }[] = [];
   for (const ex of all) {
     if (filter?.muscle && ex.muscle !== filter.muscle) continue;
@@ -163,7 +211,8 @@ export function searchExercises<T extends Searchable>(
     if (m.score > 0) scored.push({ ex, ...m });
   }
   // Typo guesses are only shown when nothing matches properly.
-  if (scored.some((s) => !s.fuzzy)) scored = scored.filter((s) => !s.fuzzy);
+  const exact = scored.some((s) => !s.fuzzy);
+  if (exact) scored = scored.filter((s) => !s.fuzzy);
   scored.sort((a, b) => b.score - a.score || a.ex.name.localeCompare(b.ex.name));
-  return scored.map((s) => s.ex);
+  return { results: scored.map((s) => s.ex), typo: !exact && scored.length > 0 };
 }

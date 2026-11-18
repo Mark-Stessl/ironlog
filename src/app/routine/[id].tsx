@@ -25,6 +25,7 @@ import { confirm, notify } from '@/lib/dialog';
 import { plural } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
+import { primeKeyboard } from '@/lib/keyboard';
 import { useFocusData } from '@/lib/use-focus-data';
 
 export default function RoutineScreen() {
@@ -194,7 +195,10 @@ function RoutineEditor({
         <Button
           label="Add exercise"
           icon="add"
-          onPress={() => router.push({ pathname: '/exercise-picker', params: { routineId: String(routine.id) } })}
+          onPress={() => {
+            primeKeyboard();
+            router.push({ pathname: '/exercise-picker', params: { routineId: String(routine.id) } });
+          }}
           style={{ marginTop: S.sm }}
         />
       ) : null}
@@ -224,7 +228,9 @@ function RoutineEditor({
           exercises={library ?? []}
           pickIcon="add"
           padding={20}
-          onCreate={(query) => router.push({ pathname: '/exercise-new', params: { name: query, routineId: String(routine.id) } })}
+          onCreate={(query) =>
+            router.push({ pathname: '/exercise-new', params: { name: query, routineId: String(routine.id) } })
+          }
           header={<Text style={text.h2}>Add exercise</Text>}
           onPick={async (ex) => {
             await addExerciseToRoutine(db, routine.id, ex.id);

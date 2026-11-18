@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -15,7 +15,7 @@ import { ExerciseImage } from '@/components/exercise-image';
 import { Button, Chip, Empty, text } from '@/components/ui';
 import type { Exercise } from '@/lib/db';
 import { EQUIPMENT, MUSCLES } from '@/lib/exercise-data';
-import { searchExercises } from '@/lib/search';
+import { searchExercisesInfo } from '@/lib/search';
 import { C, F, R, S } from '@/lib/theme';
 
 type PressState = PressableStateCallbackType & { hovered?: boolean };
@@ -51,7 +51,19 @@ export function ExerciseSearch({
   const [muscle, setMuscle] = useState<string | null>(null);
   const [equipment, setEquipment] = useState<string | null>(null);
 
-  const results = searchExercises(query, exercises, { muscle, equipment });
+  const { results, typo } = searchExercisesInfo(query, exercises, { muscle, equipment });
+  // Focus the search field when asked; also after the screen's slide-in, when
+  // browsers accept focus more reliably. (iPhone: see primeKeyboard.)
+  const input = useRef<React.ComponentRef<typeof TextInput>>(null);
+  useEffect(() => {
+    if (!autoFocus) return;
+    const a = setTimeout(() => input.current?.focus(), 0);
+    const b = setTimeout(() => input.current?.focus(), 350);
+    return () => {
+      clearTimeout(a);
+      clearTimeout(b);
+    };
+  }, [autoFocus]);
   const filtering = query.trim() !== '' || muscle != null || equipment != null;
 
   return (
@@ -61,6 +73,7 @@ export function ExerciseSearch({
         <View style={styles.searchBox}>
           <Ionicons name="search" size={15} color={C.textFaint} />
           <TextInput
+            ref={input}
             value={query}
             onChangeText={setQuery}
             placeholder="Search machine, exercise or muscle"
@@ -100,9 +113,18 @@ export function ExerciseSearch({
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingHorizontal: padding - S.sm, paddingBottom: S.xxl }}
         ListHeaderComponent={
-          <Text style={[text.label, { marginTop: S.sm, marginBottom: 6, marginLeft: S.sm }]}>
-            {filtering ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : 'Most used first'}
-          </Text>
+          typo ? (
+            <View style={styles.typo}>
+              <Ionicons name="sparkles-outline" size={14} color={C.accent} />
+              <Text style={[text.dim, { flex: 1 }]}>
+                No exact match for "{query.trim()}". Showing the closest spellings.
+              </Text>
+            </View>
+          ) : (
+            <Text style={[text.label, { marginTop: S.sm, marginBottom: 6, marginLeft: S.sm }]}>
+              {filtering ? `${results.length} ${results.length === 1 ? 'match' : 'matches'}` : 'Most used first'}
+            </Text>
+          )
         }
         renderItem={({ item }) => (
           <Pressable
@@ -156,7 +178,9 @@ export function ExerciseSearch({
                 <Ionicons name="add" size={18} color={C.accent} />
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.rowName}>{query.trim() ? `Create "${query.trim()}"` : 'Create your own exercise'}</Text>
+                <Text style={styles.rowName}>
+                  {query.trim() ? `Create "${query.trim()}"` : 'Create your own exercise'}
+                </Text>
                 <Text style={styles.rowMeta}>Missing a machine? Add it yourself.</Text>
               </View>
             </Pressable>
@@ -168,6 +192,19 @@ export function ExerciseSearch({
 }
 
 const styles = StyleSheet.create({
+  typo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    marginTop: S.sm,
+    marginBottom: 6,
+    marginHorizontal: S.sm,
+    padding: S.md,
+    borderRadius: R.md,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',

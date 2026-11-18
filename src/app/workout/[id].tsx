@@ -76,6 +76,7 @@ import { currentPRs, markPRs, PR_LABEL, type PR } from '@/lib/records';
 import { sound } from '@/lib/sound';
 import { heat, muscleStats } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
+import { primeKeyboard } from '@/lib/keyboard';
 import { useFocusData } from '@/lib/use-focus-data';
 
 const REST_OPTIONS = [0, 60, 90, 120, 150, 180];
@@ -361,7 +362,10 @@ function ActiveWorkout({
             label="Add exercise"
             icon="add"
             kind="primary"
-            onPress={() => router.push({ pathname: '/exercise-picker', params: { workoutId: String(workout.id) } })}
+            onPress={() => {
+              primeKeyboard();
+              router.push({ pathname: '/exercise-picker', params: { workoutId: String(workout.id) } });
+            }}
           />
         ) : null}
         {exercises.length > 0 ? (
