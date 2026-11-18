@@ -46,6 +46,7 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - Quick add, "same as yesterday" for a whole meal, edit entries, browse earlier days
 - **One-tap remove** with Undo on every logged entry
 - **Favourites** (star on any food or recipe) and **saved meals**: the bookmark next to a meal saves it as a usual meal, which is then added again with one tap from the empty meal or the add screen
+- **Soft sound effects** for adding food, removing, water (and reaching the water goal), reaching the protein goal, saving a meal and scanning a barcode; quieter than the workout sounds, all fade in, same on/off switch and volume
 - **Week strip and streak** on the home screen
 - **Personal records** per exercise (heaviest set, estimated 1RM, best session volume) and a trophy on sets that beat your previous best weight
 

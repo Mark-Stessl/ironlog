@@ -22,6 +22,7 @@ import {
   thumbsFor,
 } from '@/lib/food-db';
 import { amountLabel, searchFoods, type FoodItem } from '@/lib/foods';
+import { playFoodAdded } from '@/lib/food-sounds';
 import { haptic } from '@/lib/haptics';
 import { isBarcode, lookupBarcode, OffError, searchProducts, type OffProduct } from '@/lib/off';
 import { MEALS, mealForTime, mealLabel, type Meal } from '@/lib/recipes';
@@ -106,11 +107,13 @@ export default function AddFoodScreen() {
     const g = s?.g ?? 100;
     await logFood(db, { day, meal, item: f, grams: g, amount: amountLabel(s, 1, g) });
     haptic.tap();
+    playFoodAdded(db, day, ((f.per100.protein ?? 0) * g) / 100);
   };
 
   const addSaved = async (id: number) => {
     await logSavedMeal(db, id, day, meal);
     haptic.success();
+    playFoodAdded(db, day, data?.meals.find((m) => m.id === id)?.total.protein ?? 0);
   };
 
   const forgetSaved = async (id: number, name: string) => {

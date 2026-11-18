@@ -26,9 +26,11 @@ import {
 } from '@/lib/food-db';
 import { amountLabel, nutrientsFor, type FoodItem, type Serving } from '@/lib/foods';
 import { parseNum } from '@/lib/format';
+import { playFoodAdded } from '@/lib/food-sounds';
 import { haptic } from '@/lib/haptics';
 import { pickPhoto } from '@/lib/photo';
 import { RECIPE_PHOTOS } from '@/lib/recipe-photos';
+import { sound } from '@/lib/sound';
 import { fmtNutrient, MICROS, NUTRIENTS, type Goals, type NutrientKey } from '@/lib/nutrition';
 import { MEALS, mealForTime, mealLabel, type Meal } from '@/lib/recipes';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
@@ -131,6 +133,7 @@ function FoodDetail({
       if (meal !== entry.meal) await db.runAsync('UPDATE food_log SET meal = ? WHERE id = ?', meal, entry.id);
     } else {
       await logFood(db, { day, meal, item, grams, amount: label });
+      playFoodAdded(db, day, n.protein ?? 0);
     }
     haptic.success();
     router.dismissTo('/food');
@@ -140,6 +143,7 @@ function FoodDetail({
     if (!entry) return;
     await deleteLogEntry(db, entry.id);
     haptic.tap();
+    sound.play('foodRemove');
     router.back();
   };
 
@@ -363,6 +367,7 @@ function FoodDetail({
                 onPress={async () => {
                   await setFavorite(db, item.ref, !favorite);
                   haptic.tap();
+                  if (!favorite) sound.play('saved');
                   reload();
                 }}
                 color={favorite ? C.gold : C.textDim}

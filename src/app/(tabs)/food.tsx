@@ -7,6 +7,7 @@ import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } 
 
 import { CalorieRing, DetailBars, EnergySplit, MacroBars, MicroBars, WeekBars } from '@/components/nutrition-charts';
 import { FoodThumb, type ThumbData } from '@/components/food-thumb';
+import { SoundToggle } from '@/components/sound-toggle';
 import { Card, IconButton, ListCard, ListRow, Page, SectionTitle, text, type IconName } from '@/components/ui';
 import { WaterCard } from '@/components/water-card';
 import { addDays, dayKey, dayStart, relativeDay } from '@/lib/calendar';
@@ -32,8 +33,10 @@ import {
   type LogEntry,
   type SavedMeal,
 } from '@/lib/food-db';
+import { playFoodAdded } from '@/lib/food-sounds';
 import { haptic } from '@/lib/haptics';
 import { pickPhoto } from '@/lib/photo';
+import { sound } from '@/lib/sound';
 import { sum } from '@/lib/nutrition';
 import { MEALS, mealLabel, type Meal } from '@/lib/recipes';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
@@ -96,6 +99,7 @@ export default function FoodTab() {
   const removeEntry = async (e: LogEntry) => {
     await deleteLogEntry(db, e.id);
     haptic.tap();
+    sound.play('foodRemove');
     showToast({ text: `Removed ${e.name}`, icon: 'trash-outline', undo: () => restoreLogEntry(db, e) });
     reload();
   };
@@ -104,6 +108,7 @@ export default function FoodTab() {
     const res = await saveMeal(db, day, meal);
     if (!res) return;
     haptic.success();
+    sound.play('saved');
     const label = mealLabel(meal).toLowerCase();
     if (res.existed) {
       showToast({ text: `Already saved as a usual ${label}`, icon: 'bookmark' });
@@ -120,6 +125,7 @@ export default function FoodTab() {
   const addSaved = async (m: SavedMeal, meal: Meal) => {
     const ids = await logSavedMeal(db, m.id, day, meal);
     haptic.success();
+    playFoodAdded(db, day, m.total.protein ?? 0);
     showToast({ text: `Added ${m.name}`, icon: 'checkmark-circle', undo: () => deleteLogEntries(db, ids) });
     reload();
   };
@@ -137,8 +143,13 @@ export default function FoodTab() {
   const drink = async (ml: number) => {
     const before = data?.water ?? 0;
     await addWater(db, day, ml);
-    if (goals && before < goals.waterMl && before + ml >= goals.waterMl) haptic.success();
-    else haptic.tap();
+    if (goals && before < goals.waterMl && before + ml >= goals.waterMl) {
+      haptic.success();
+      sound.play('waterGoal');
+    } else {
+      haptic.tap();
+      sound.play('water');
+    }
     reload();
   };
 
@@ -242,6 +253,7 @@ export default function FoodTab() {
                       onPress={async () => {
                         await copyMeal(db, addDays(day, -1), day, m.key);
                         haptic.success();
+                        playFoodAdded(db, day, sum(before.map((e) => e.n)).protein ?? 0);
                         reload();
                       }}
                       accessibilityRole="button"
@@ -317,6 +329,7 @@ export default function FoodTab() {
               {data?.settings.profile ? 'Goals from your body profile' : 'EU reference intakes'}
             </Text>
           </View>
+          <SoundToggle />
           <IconButton icon="options-outline" label="Nutrition goals" onPress={() => router.push('/nutrition-goals')} />
         </View>
 

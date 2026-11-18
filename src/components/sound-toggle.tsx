@@ -5,15 +5,22 @@ import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
 import { Slider } from '@/components/slider';
-import { Button, IconButton, text } from '@/components/ui';
+import { Button, IconButton, text, type IconName } from '@/components/ui';
 import { setSetting } from '@/lib/db';
 import { sound, type SoundName } from '@/lib/sound';
 import { C, F, S } from '@/lib/theme';
 
-const PREVIEWS: { name: SoundName; label: string; icon: 'trophy-outline' | 'timer-outline' | 'flag-outline' }[] = [
-  { name: 'record', label: 'Record', icon: 'trophy-outline' },
-  { name: 'rest', label: 'Rest over', icon: 'timer-outline' },
-  { name: 'complete', label: 'Finish', icon: 'flag-outline' },
+const PREVIEWS: { name: SoundName; label: string; icon: IconName }[][] = [
+  [
+    { name: 'record', label: 'Record', icon: 'trophy-outline' },
+    { name: 'rest', label: 'Rest over', icon: 'timer-outline' },
+    { name: 'complete', label: 'Finish', icon: 'flag-outline' },
+  ],
+  [
+    { name: 'foodAdd', label: 'Add food', icon: 'restaurant-outline' },
+    { name: 'water', label: 'Water', icon: 'water-outline' },
+    { name: 'foodGoal', label: 'Goal', icon: 'checkmark-circle-outline' },
+  ],
 ];
 
 /** Speaker button that opens the sound settings: on/off, volume and previews (all remembered). */
@@ -25,7 +32,8 @@ export function SoundToggle() {
   useEffect(() => sound.subscribe(setOn), []);
   const lastPreview = useRef(0);
 
-  const icon = !on || volume === 0 ? 'volume-mute-outline' : volume < 0.4 ? 'volume-low-outline' : 'volume-medium-outline';
+  const icon =
+    !on || volume === 0 ? 'volume-mute-outline' : volume < 0.4 ? 'volume-low-outline' : 'volume-medium-outline';
 
   const changeVolume = (v: number) => {
     setVolume(v);
@@ -46,7 +54,12 @@ export function SoundToggle() {
 
   return (
     <>
-      <IconButton icon={icon} label="Sound settings" color={on ? C.textDim : C.textFaint} onPress={() => setOpen(true)} />
+      <IconButton
+        icon={icon}
+        label="Sound settings"
+        color={on ? C.textDim : C.textFaint}
+        onPress={() => setOpen(true)}
+      />
       <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
         <View style={styles.root}>
           <Animated.View entering={FadeIn.duration(150)} style={StyleSheet.absoluteFill}>
@@ -59,7 +72,7 @@ export function SoundToggle() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[text.title, { fontSize: 18 }]}>Sound effects</Text>
-                <Text style={text.faint}>For records, rest over and finishing. Plays along with your music.</Text>
+                <Text style={text.faint}>Workouts and food, all soft. Plays along with your music.</Text>
               </View>
             </View>
 
@@ -88,11 +101,20 @@ export function SoundToggle() {
               </View>
 
               <Text style={[text.label, { marginTop: S.md, marginBottom: 6 }]}>Preview</Text>
-              <View style={styles.previews}>
-                {PREVIEWS.map((p) => (
-                  <Button key={p.name} label={p.label} icon={p.icon} small onPress={() => sound.play(p.name)} style={{ flex: 1 }} />
-                ))}
-              </View>
+              {PREVIEWS.map((row, i) => (
+                <View key={i} style={[styles.previews, i > 0 && { marginTop: 6 }]}>
+                  {row.map((p) => (
+                    <Button
+                      key={p.name}
+                      label={p.label}
+                      icon={p.icon}
+                      small
+                      onPress={() => sound.play(p.name)}
+                      style={{ flex: 1 }}
+                    />
+                  ))}
+                </View>
+              ))}
             </View>
 
             <Button label="Done" kind="primary" onPress={() => setOpen(false)} style={{ marginTop: S.lg }} />

@@ -10,10 +10,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarcodeScanner } from '@/components/barcode-scanner';
 import { foodByBarcode, saveProduct } from '@/lib/food-db';
 import { haptic } from '@/lib/haptics';
+import { sound } from '@/lib/sound';
 import { isBarcode, lookupBarcode, OffError } from '@/lib/off';
 import { C, F, R, S } from '@/lib/theme';
 
-type State = { kind: 'scanning' } | { kind: 'looking'; code: string } | { kind: 'missing'; code: string } | { kind: 'error'; message: string };
+type State =
+  | { kind: 'scanning' }
+  | { kind: 'looking'; code: string }
+  | { kind: 'missing'; code: string }
+  | { kind: 'error'; message: string };
 
 export default function ScanScreen() {
   const { meal, day } = useLocalSearchParams<{ meal?: string; day?: string }>();
@@ -29,6 +34,7 @@ export default function ScanScreen() {
     if (busy.current || !isBarcode(code)) return;
     busy.current = true;
     haptic.tap();
+    sound.play('scan');
     setState({ kind: 'looking', code });
     try {
       // Already on this phone? No need to ask the internet.
@@ -71,13 +77,21 @@ export default function ScanScreen() {
             <Text style={styles.statusText}>Barcode {state.code} isn't on Open Food Facts yet.</Text>
             <View style={styles.row}>
               <Pressable
-                onPress={() => router.replace({ pathname: '/food-new', params: { barcode: state.code, meal: meal ?? '', day: day ?? '' } })}
+                onPress={() =>
+                  router.replace({
+                    pathname: '/food-new',
+                    params: { barcode: state.code, meal: meal ?? '', day: day ?? '' },
+                  })
+                }
                 style={[styles.button, styles.primary]}
                 accessibilityRole="button">
                 <Ionicons name="create-outline" size={16} color={C.onAccent} />
                 <Text style={[styles.buttonText, { color: C.onAccent }]}>Add it yourself</Text>
               </Pressable>
-              <Pressable onPress={() => setState({ kind: 'scanning' })} style={styles.button} accessibilityRole="button">
+              <Pressable
+                onPress={() => setState({ kind: 'scanning' })}
+                style={styles.button}
+                accessibilityRole="button">
                 <Text style={styles.buttonText}>Scan again</Text>
               </Pressable>
             </View>
@@ -189,6 +203,13 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
   },
   manualInput: { flex: 1, minWidth: 0, color: C.text, fontFamily: F.medium, fontSize: 15, paddingVertical: 0 },
-  go: { width: 36, height: 36, borderRadius: 8, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  go: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: C.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   credit: { color: C.textFaint, fontFamily: F.regular, fontSize: 11, textAlign: 'center' },
 });
