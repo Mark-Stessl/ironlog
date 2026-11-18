@@ -82,7 +82,8 @@ export function findPR(set: LoggedSet, before: Best): PR | null {
 export function markPRs<T extends LoggedSet & { done: number }>(sets: T[], base: Best): PR[][] {
   let best = base;
   return sets.map((s) => {
-    if (!s.done) return [];
+    // Warm-ups never set records (and don't raise the bar for later sets).
+    if (!s.done || (s as { kind?: string }).kind === 'warmup') return [];
     const prs = findPRs(s, best);
     best = addToBest(best, s);
     return prs;

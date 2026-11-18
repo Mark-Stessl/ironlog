@@ -18,6 +18,8 @@ export type Exercise = {
   is_custom: number;
   /** Comma-separated extra muscle groups (custom exercises), e.g. "Triceps,Shoulders". */
   secondary: string;
+  /** Own note: seat height, grip, cues. */
+  notes: string;
   use_count: number;
 };
 
@@ -29,6 +31,9 @@ export type Workout = {
   routine_id: number | null;
 };
 
+/** Normal working set, warm-up (not counted in volume, sets or records), drop set, or set to failure. */
+export type SetKind = 'normal' | 'warmup' | 'drop' | 'failure';
+
 export type SetRow = {
   id: number;
   workout_exercise_id: number;
@@ -36,9 +41,10 @@ export type SetRow = {
   weight: number | null;
   reps: number | null;
   done: number;
+  kind: SetKind;
 };
 
-export type PrevSet = { weight: number | null; reps: number | null };
+export type PrevSet = { weight: number | null; reps: number | null; kind?: SetKind };
 
 export type WorkoutExercise = {
   id: number; // workout_exercises.id
@@ -47,6 +53,8 @@ export type WorkoutExercise = {
   muscle: string;
   equipment: string;
   secondary: string;
+  /** The exercise's own note (seat height, grip...), shown in every workout. */
+  notes: string;
   sets: SetRow[];
   previous: PrevSet[]; // sets from the last finished session of this exercise
   best: Best; // records from workouts before this one
@@ -210,7 +218,17 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       `);
     });
   }
-  // Future schema changes: add `if (version < 7) { ... }` blocks here.
+  if (version < 7) {
+    // Set types (warm-up, drop set, failure) and a note per exercise.
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE sets ADD COLUMN kind TEXT NOT NULL DEFAULT 'normal';
+        ALTER TABLE exercises ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+        PRAGMA user_version = 7;
+      `);
+    });
+  }
+  // Future schema changes: add `if (version < 8) { ... }` blocks here.
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
@@ -299,7 +317,7 @@ export async function getExerciseHistory(db: SQLiteDatabase, exerciseId: number)
      FROM sets s
      JOIN workout_exercises we ON we.id = s.workout_exercise_id
      JOIN workouts w ON w.id = we.workout_id
-     WHERE we.exercise_id = ? AND s.done = 1 AND w.finished_at IS NOT NULL
+     WHERE we.exercise_id = ? AND s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL
      ORDER BY w.finished_at DESC, w.id DESC, we.position, s.position`,
     exerciseId,
   );
@@ -400,7 +418,7 @@ async function previousSets(db: SQLiteDatabase, exerciseId: number, excludeWorko
   );
   if (!last) return [];
   return db.getAllAsync<PrevSet>(
-    'SELECT weight, reps FROM sets WHERE workout_exercise_id = ? AND done = 1 ORDER BY position',
+    'SELECT weight, reps, kind FROM sets WHERE workout_exercise_id = ? AND done = 1 ORDER BY position',
     last.id,
   );
 }
@@ -411,7 +429,7 @@ async function bestBefore(db: SQLiteDatabase, exerciseId: number, workout: Worko
     `SELECT w.id AS workout_id, s.weight, s.reps FROM sets s
      JOIN workout_exercises we ON we.id = s.workout_exercise_id
      JOIN workouts w ON w.id = we.workout_id
-     WHERE we.exercise_id = ? AND s.done = 1 AND w.finished_at IS NOT NULL
+     WHERE we.exercise_id = ? AND s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL
        AND w.id != ? AND w.started_at <= ?`,
     exerciseId,
     workout.id,
@@ -426,7 +444,7 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number): P
   const workout = await db.getFirstAsync<Workout>('SELECT * FROM workouts WHERE id = ?', workoutId);
   if (!workout) return null;
   const rows = await db.getAllAsync<Omit<WorkoutExercise, 'sets' | 'previous' | 'best'>>(
-    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment, e.secondary
+    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment, e.secondary, e.notes
      FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
      WHERE we.workout_id = ? ORDER BY we.position`,
     workoutId,
@@ -468,7 +486,13 @@ export async function addExerciseToWorkout(db: SQLiteDatabase, workoutId: number
     const prev = await previousSets(db, exerciseId, workoutId);
     const count = Math.max(1, prev.length);
     for (let i = 0; i < count; i++) {
-      await db.runAsync('INSERT INTO sets (workout_exercise_id, position) VALUES (?, ?)', we.lastInsertRowId, i);
+      // Same set types as last time (warm-ups first, then working sets...).
+      await db.runAsync(
+        'INSERT INTO sets (workout_exercise_id, position, kind) VALUES (?, ?, ?)',
+        we.lastInsertRowId,
+        i,
+        prev[i]?.kind ?? 'normal',
+      );
     }
   });
 }
@@ -560,7 +584,7 @@ export function statSets(db: SQLiteDatabase, from: number, to: number, workoutId
      JOIN workout_exercises we ON we.id = s.workout_exercise_id
      JOIN workouts w ON w.id = we.workout_id
      JOIN exercises e ON e.id = we.exercise_id
-     WHERE s.done = 1 AND w.finished_at IS NOT NULL AND w.finished_at >= ? AND w.finished_at < ?
+     WHERE s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL AND w.finished_at >= ? AND w.finished_at < ?
        AND (? IS NULL OR w.id = ?)`,
     from,
     to,
@@ -588,10 +612,10 @@ export function listFinishedWorkouts(db: SQLiteDatabase): Promise<WorkoutSummary
     SELECT w.*,
       (SELECT COUNT(*) FROM workout_exercises we WHERE we.workout_id = w.id) AS exercise_count,
       (SELECT COUNT(*) FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
-         WHERE we.workout_id = w.id AND s.done = 1) AS set_count,
+         WHERE we.workout_id = w.id AND s.done = 1 AND s.kind != 'warmup') AS set_count,
       (SELECT COALESCE(SUM(COALESCE(s.weight, 0) * COALESCE(s.reps, 0)), 0)
          FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
-         WHERE we.workout_id = w.id AND s.done = 1) AS volume,
+         WHERE we.workout_id = w.id AND s.done = 1 AND s.kind != 'warmup') AS volume,
       (SELECT GROUP_CONCAT(name, ' · ') FROM
          (SELECT e.name FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
           WHERE we.workout_id = w.id ORDER BY we.position)) AS exercise_names
@@ -749,7 +773,7 @@ export async function profileTotals(db: SQLiteDatabase): Promise<ProfileTotals> 
      FROM sets s
      JOIN workout_exercises we ON we.id = s.workout_exercise_id
      JOIN workouts w ON w.id = we.workout_id
-     WHERE s.done = 1 AND w.finished_at IS NOT NULL`,
+     WHERE s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL`,
   );
   return {
     workouts: w?.n ?? 0,
@@ -776,7 +800,7 @@ export function workoutsBetween(db: SQLiteDatabase, from: number, to: number): P
             COUNT(s.id) AS sets, COALESCE(SUM(COALESCE(s.weight, 0) * COALESCE(s.reps, 0)), 0) AS volume
      FROM workouts w
      LEFT JOIN workout_exercises we ON we.workout_id = w.id
-     LEFT JOIN sets s ON s.workout_exercise_id = we.id AND s.done = 1
+     LEFT JOIN sets s ON s.workout_exercise_id = we.id AND s.done = 1 AND s.kind != 'warmup'
      WHERE w.finished_at IS NOT NULL AND w.started_at >= ? AND w.started_at < ?
      GROUP BY w.id
      ORDER BY w.started_at`,
@@ -831,4 +855,43 @@ export async function addMeasurement(db: SQLiteDatabase, kind: string, value: nu
 
 export async function deleteMeasurement(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM measurements WHERE id = ?', id);
+}
+
+export async function setSetKind(db: SQLiteDatabase, setId: number, kind: SetKind): Promise<void> {
+  await db.runAsync('UPDATE sets SET kind = ? WHERE id = ?', kind, setId);
+}
+
+export async function setExerciseNotes(db: SQLiteDatabase, exerciseId: number, notes: string): Promise<void> {
+  await db.runAsync('UPDATE exercises SET notes = ? WHERE id = ?', notes.trim(), exerciseId);
+}
+
+/** Swaps an exercise with its neighbour in a workout (-1 = up, +1 = down). */
+export async function moveWorkoutExercise(db: SQLiteDatabase, workoutExerciseId: number, dir: -1 | 1): Promise<void> {
+  await swapPosition(db, 'workout_exercises', 'workout_id', workoutExerciseId, dir);
+}
+
+/** Swaps an exercise with its neighbour in a routine (-1 = up, +1 = down). */
+export async function moveRoutineExercise(db: SQLiteDatabase, routineExerciseId: number, dir: -1 | 1): Promise<void> {
+  await swapPosition(db, 'routine_exercises', 'routine_id', routineExerciseId, dir);
+}
+
+async function swapPosition(
+  db: SQLiteDatabase,
+  table: 'workout_exercises' | 'routine_exercises',
+  parent: 'workout_id' | 'routine_id',
+  id: number,
+  dir: -1 | 1,
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    const rows = await db.getAllAsync<{ id: number }>(
+      `SELECT id FROM ${table} WHERE ${parent} = (SELECT ${parent} FROM ${table} WHERE id = ?) ORDER BY position, id`,
+      id,
+    );
+    const i = rows.findIndex((r) => r.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= rows.length) return;
+    [rows[i], rows[j]] = [rows[j], rows[i]];
+    // Renumber 0..n-1 so earlier gaps or duplicate positions can't get in the way.
+    for (const [pos, r] of rows.entries()) await db.runAsync(`UPDATE ${table} SET position = ? WHERE id = ?`, pos, r.id);
+  });
 }

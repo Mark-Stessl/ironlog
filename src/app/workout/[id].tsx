@@ -53,9 +53,12 @@ import {
   getSetting,
   getWorkoutDetail,
   listExercises,
+  moveWorkoutExercise,
   removeWorkoutExercise,
   renameWorkout,
   saveWorkoutAsRoutine,
+  setExerciseNotes,
+  setSetKind,
   setSetting,
   updateSet,
   workoutNumber,
@@ -64,6 +67,7 @@ import {
   freeRoutineName,
   getRoutine,
   type PrevSet,
+  type SetKind,
   type SetRow,
   type WorkoutDetail,
   type WorkoutExercise,
@@ -330,10 +334,25 @@ function ActiveWorkout({
           />
         ) : null}
 
-        {exercises.map((ex) => (
+        {exercises.map((ex, exIndex) => (
           <ExerciseCard
             key={ex.id}
             ex={ex}
+            first={exIndex === 0}
+            last={exIndex === exercises.length - 1}
+            onMove={async (dir) => {
+              await moveWorkoutExercise(db, ex.id, dir);
+              haptic.tap();
+              await sync();
+            }}
+            onNotes={async (notes) => {
+              await setExerciseNotes(db, ex.exercise_id, notes);
+            }}
+            onSetKind={async (setId, kind) => {
+              await setSetKind(db, setId, kind);
+              haptic.tap();
+              await sync();
+            }}
             onPatchSet={patchSet}
             onAddSet={async () => {
               await addSet(db, ex.id);
@@ -369,7 +388,7 @@ function ActiveWorkout({
           />
         ) : null}
         {exercises.length > 0 ? (
-          <Text style={[text.faint, { textAlign: 'center' }]}>Long-press a set number to delete it.</Text>
+          <Text style={[text.faint, { textAlign: 'center' }]}>Tap a set number to make it a warm-up, drop set or failure set, or to delete it.</Text>
         ) : null}
 
         <View style={[styles.endCard, !desktop && { flexDirection: 'column', alignItems: 'stretch' }]}>
@@ -446,20 +465,41 @@ function ActiveWorkout({
   );
 }
 
+/** Letter and colour for the set types; normal sets show their number instead. */
+const SET_KIND: Record<Exclude<SetKind, 'normal'>, { letter: string; color: string; name: string }> = {
+  warmup: { letter: 'W', color: '#F59E0B', name: 'Warm-up' },
+  drop: { letter: 'D', color: '#A78BFA', name: 'Drop set' },
+  failure: { letter: 'F', color: '#F87171', name: 'Failure' },
+};
+
 function ExerciseCard({
   ex,
+  first,
+  last,
+  onMove,
+  onNotes,
+  onSetKind,
   onPatchSet,
   onAddSet,
   onDeleteSet,
   onRemove,
 }: {
   ex: WorkoutExercise;
+  first: boolean;
+  last: boolean;
+  onMove: (dir: -1 | 1) => void;
+  onNotes: (notes: string) => void;
+  onSetKind: (setId: number, kind: SetKind) => void;
   onPatchSet: (set: SetRow, patch: { weight: number | null; reps: number | null; done: boolean }) => void;
   onAddSet: () => void;
   onDeleteSet: (setId: number) => void;
   onRemove: () => void;
 }) {
   const prs = currentPRs(ex.sets, ex.best);
+  const [notes, setNotes] = useState(ex.notes ?? '');
+  // Normal sets are numbered 1, 2, 3...; warm-ups, drop sets and failure sets show a letter.
+  let n = 0;
+  const numbers = ex.sets.map((s) => (s.kind === 'normal' || !s.kind ? ++n : 0));
   return (
     <Card style={{ padding: S.md, gap: 2 }}>
       <View style={styles.exHead}>
@@ -476,7 +516,38 @@ function ExerciseCard({
             </Text>
           </View>
         </Pressable>
+        <View style={styles.moveGroup}>
+          <IconButton
+            icon="chevron-up"
+            label={`Move ${ex.name} up`}
+            onPress={() => !first && onMove(-1)}
+            color={first ? C.border : C.textDim}
+            size={17}
+          />
+          <IconButton
+            icon="chevron-down"
+            label={`Move ${ex.name} down`}
+            onPress={() => !last && onMove(1)}
+            color={last ? C.border : C.textDim}
+            size={17}
+          />
+        </View>
         <IconButton icon="trash-outline" label={`Remove ${ex.name}`} onPress={onRemove} color={C.textFaint} size={16} />
+      </View>
+
+      {/* The exercise's own note: it's saved with the exercise and shows up every time. */}
+      <View style={[styles.noteRow, notes ? styles.noteRowFilled : null]}>
+        <Ionicons name="create-outline" size={13} color={notes ? C.gold : C.textFaint} />
+        <TextInput
+          value={notes}
+          onChangeText={setNotes}
+          onBlur={() => notes.trim() !== (ex.notes ?? '') && onNotes(notes)}
+          placeholder="Add a note (seat height, grip…)"
+          placeholderTextColor={C.textFaint}
+          multiline
+          accessibilityLabel={`Note for ${ex.name}`}
+          style={styles.noteInput}
+        />
       </View>
 
       <View style={styles.setRow}>
@@ -492,6 +563,8 @@ function ExerciseCard({
           key={set.id}
           set={set}
           index={i}
+          number={numbers[i]}
+          onKind={(kind) => onSetKind(set.id, kind)}
           prev={ex.previous[i]}
           prs={prs[i]}
           exercise={ex.name}
@@ -508,6 +581,8 @@ function ExerciseCard({
 function SetLine({
   set,
   index,
+  number,
+  onKind,
   prev,
   prs,
   exercise,
@@ -516,6 +591,9 @@ function SetLine({
 }: {
   set: SetRow;
   index: number;
+  /** Shown number for normal sets (0 for warm-up, drop and failure sets). */
+  number: number;
+  onKind: (kind: SetKind) => void;
   prev: PrevSet | undefined;
   prs: PR[];
   exercise: string;
@@ -553,6 +631,32 @@ function SetLine({
     transform: [{ scale: pop.value }],
     backgroundColor: interpolateColor(doneAnim.value, [0, 1], [C.cardHi, C.good]),
   }));
+
+  const kind = set.kind ?? 'normal';
+  const special = kind !== 'normal' ? SET_KIND[kind] : null;
+  const label = special ? special.name : `Set ${number}`;
+
+  // Tap the set number: choose the set type, see records, or delete the set.
+  const openMenu = async () => {
+    const pick = await choose({
+      title: label,
+      message: "Warm-ups don't count toward volume, set totals or records.",
+      icon: 'options-outline',
+      cancelLabel: 'Cancel',
+      choices: [
+        { label: 'Normal set', value: 'normal', icon: 'barbell-outline', primary: kind === 'normal' },
+        { label: 'Warm-up (W)', value: 'warmup', icon: 'sunny-outline', primary: kind === 'warmup' },
+        { label: 'Drop set (D)', value: 'drop', icon: 'trending-down-outline', primary: kind === 'drop' },
+        { label: 'Failure (F)', value: 'failure', icon: 'flash-outline', primary: kind === 'failure' },
+        ...(pr ? [{ label: 'Show records', value: 'records', icon: 'trophy-outline' as const }] : []),
+        { label: 'Delete set', value: 'delete', icon: 'trash-outline' },
+      ],
+    });
+    if (!pick) return;
+    if (pick === 'records') return showRecords(exercise, index, prs);
+    if (pick === 'delete') return onDelete();
+    if (pick !== kind) onKind(pick as SetKind);
+  };
 
   const changeWeight = (t: string) => {
     setWeightText(t);
@@ -592,19 +696,21 @@ function SetLine({
       </Animated.View>
       <Pressable
         style={styles.colNum}
-        onPress={pr ? () => showRecords(exercise, index, prs) : undefined}
+        onPress={openMenu}
         onLongPress={onDelete}
-        accessibilityLabel={
-          pr
-            ? `Set ${index + 1}: ${plural(prs.length, 'record')}, tap for details`
-            : `Set ${index + 1}, long press to delete`
-        }>
+        hitSlop={4}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}${pr ? `, ${plural(prs.length, 'record')}` : ''}. Tap to change the set type`}>
         {pr ? (
           <Animated.View entering={ZoomIn.springify().damping(8)}>
             <Ionicons name="trophy" size={13} color={C.gold} />
           </Animated.View>
+        ) : special ? (
+          <View style={[styles.kindBadge, { borderColor: special.color }]}>
+            <Text style={[styles.kindText, { color: special.color }]}>{special.letter}</Text>
+          </View>
         ) : (
-          <Text style={[styles.setNum, done && { color: C.good }]}>{index + 1}</Text>
+          <Text style={[styles.setNum, done && { color: C.good }]}>{number}</Text>
         )}
       </Pressable>
       <Pressable
@@ -836,15 +942,22 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
                 <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
                 <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                   <Text style={styles.exName}>{ex.name}</Text>
-                  {ex.sets.map((s, n) => (
-                    <View key={s.id} style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                      <Text style={[text.faint, { width: 14 }]}>{n + 1}</Text>
-                      <Text style={[text.dim, prSetIds.has(s.id) && { color: C.gold }]}>
-                        {fmtSet(s.weight, s.reps)}
-                      </Text>
-                      {prSetIds.has(s.id) ? <Ionicons name="trophy" size={11} color={C.gold} /> : null}
-                    </View>
-                  ))}
+                  {ex.sets.map((s, n) => {
+                    const special = s.kind && s.kind !== 'normal' ? SET_KIND[s.kind] : null;
+                    const number = ex.sets.slice(0, n + 1).filter((x) => !x.kind || x.kind === 'normal').length;
+                    return (
+                      <View key={s.id} style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <Text
+                          style={[text.faint, { width: 14 }, special && { color: special.color, fontFamily: F.semi }]}>
+                          {special ? special.letter : number}
+                        </Text>
+                        <Text style={[text.dim, prSetIds.has(s.id) && { color: C.gold }]}>
+                          {fmtSet(s.weight, s.reps)}
+                        </Text>
+                        {prSetIds.has(s.id) ? <Ionicons name="trophy" size={11} color={C.gold} /> : null}
+                      </View>
+                    );
+                  })}
                 </View>
               </ListRow>
             ))}
@@ -970,6 +1083,37 @@ const styles = StyleSheet.create({
   colInput: { width: 60 },
   colCheck: { width: 28, alignItems: 'center', justifyContent: 'center' },
   setNum: { color: C.textDim, fontSize: 13, fontFamily: F.semi, textAlign: 'center' },
+  kindBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kindText: { fontSize: 12, fontFamily: F.semi },
+  moveGroup: { flexDirection: 'row', alignItems: 'center' },
+  noteRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: R.sm,
+  },
+  noteRowFilled: { backgroundColor: 'rgba(233,190,88,0.07)' },
+  noteInput: {
+    flex: 1,
+    minWidth: 0,
+    color: C.text,
+    fontFamily: F.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    padding: 0,
+    marginTop: -1,
+  },
   prevText: { color: C.textFaint, fontSize: 12, fontFamily: F.regular, textAlign: 'center' },
   input: {
     height: 30,

@@ -14,6 +14,7 @@ import {
   getActiveWorkout,
   getRoutine,
   listExercises,
+  moveRoutineExercise,
   removeRoutineExercise,
   renameRoutine,
   setRoutineExerciseSets,
@@ -146,6 +147,31 @@ function RoutineEditor({
         <ListCard style={{ marginTop: S.sm }}>
           {exercises.map((ex, i) => (
             <ListRow key={ex.id} last={i === exercises.length - 1}>
+              <View style={styles.move}>
+                {[-1, 1].map((dir) => {
+                  const off = dir === -1 ? i === 0 : i === exercises.length - 1;
+                  return (
+                    <Pressable
+                      key={dir}
+                      disabled={off}
+                      hitSlop={{ left: 8, right: 4, top: dir === -1 ? 6 : 0, bottom: dir === 1 ? 6 : 0 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Move ${ex.name} ${dir === -1 ? 'up' : 'down'}`}
+                      onPress={async () => {
+                        await moveRoutineExercise(db, ex.id, dir as -1 | 1);
+                        haptic.tap();
+                        await reload();
+                      }}
+                      style={({ pressed }) => [styles.moveBtn, pressed && { backgroundColor: C.cardHi }]}>
+                      <Ionicons
+                        name={dir === -1 ? 'chevron-up' : 'chevron-down'}
+                        size={15}
+                        color={off ? C.border : C.textDim}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
               <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={text.strong} numberOfLines={1}>
@@ -243,6 +269,8 @@ function RoutineEditor({
 }
 
 const styles = StyleSheet.create({
+  move: { marginLeft: -6, marginRight: -4, gap: 2 },
+  moveBtn: { width: 24, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   page: { padding: S.lg, gap: 6, paddingBottom: S.xxl },
   pageDesktop: { paddingHorizontal: 40, paddingTop: S.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
   panel: { width: 360, borderLeftWidth: 1, borderLeftColor: C.border },

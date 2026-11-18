@@ -1,14 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useEffect, useState } from 'react';
+import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BodyMap } from '@/components/body-map';
 import { ExerciseImage } from '@/components/exercise-image';
 import { Button, Card, Empty, ListCard, ListRow, SectionTitle, text } from '@/components/ui';
-import { computeRecords, getExercise, getExerciseHistory } from '@/lib/db';
+import { computeRecords, getExercise, getExerciseHistory, setExerciseNotes } from '@/lib/db';
 import { formVideoUrl, getMedia, REPDB_URL } from '@/lib/exercise-media';
 import { musclesFor } from '@/lib/muscles';
 import { fmtDate, fmtSet, fmtVolume, fmtWeight } from '@/lib/format';
-import { C, F, S, useIsDesktop } from '@/lib/theme';
+import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
 /** Picture, how-to, records and history of one exercise. Used as a page and as the desktop side panel. */
@@ -51,6 +53,8 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
           />
         </View>
       </View>
+
+      <ExerciseNotes exerciseId={exercise.id} saved={exercise.notes ?? ''} />
 
       {media ? <Text style={[text.body, { color: C.textDim }]}>{media.description}</Text> : null}
 
@@ -149,9 +153,43 @@ function Record({ label, value, sub }: { label: string; value: string; sub?: str
 }
 
 const styles = StyleSheet.create({
+  note: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: S.sm,
+    padding: S.md,
+    borderRadius: R.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+  },
+  noteFilled: { borderColor: 'rgba(233,190,88,0.4)', backgroundColor: 'rgba(233,190,88,0.06)' },
+  noteInput: { flex: 1, minWidth: 0, color: C.text, fontFamily: F.regular, fontSize: 14, lineHeight: 20, padding: 0 },
   hero: { flexDirection: 'row', gap: S.lg, alignItems: 'center', marginBottom: S.xs },
   records: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: S.md },
   recordLine: { width: 1, alignSelf: 'stretch', backgroundColor: C.border },
   step: { flexDirection: 'row', gap: S.sm, alignItems: 'flex-start' },
   stepNum: { width: 16, color: C.accent, fontFamily: F.semi, fontSize: 13, lineHeight: 20 },
 });
+
+/** Your own note for an exercise (seat height, grip, cues). Saved when you leave the field. */
+function ExerciseNotes({ exerciseId, saved }: { exerciseId: number; saved: string }) {
+  const db = useSQLiteContext();
+  const [notes, setNotes] = useState(saved);
+  useEffect(() => setNotes(saved), [saved]);
+  return (
+    <View style={[styles.note, notes ? styles.noteFilled : null]}>
+      <Ionicons name="create-outline" size={15} color={notes ? C.gold : C.textFaint} style={{ marginTop: 2 }} />
+      <TextInput
+        value={notes}
+        onChangeText={setNotes}
+        onBlur={() => notes.trim() !== saved && setExerciseNotes(db, exerciseId, notes)}
+        placeholder="Your note: seat height, grip, cues… (shows in every workout)"
+        placeholderTextColor={C.textFaint}
+        multiline
+        accessibilityLabel="Your note for this exercise"
+        style={styles.noteInput}
+      />
+    </View>
+  );
+}

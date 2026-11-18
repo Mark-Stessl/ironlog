@@ -145,8 +145,8 @@ test('database: full workout flow', async (t) => {
   assert.equal(d.workout.name, hist[0].name);
   assert.equal(d.exercises[0].sets.length, 2);
   assert.deepEqual(d.exercises[0].previous.map((p) => ({ ...p })), [
-    { weight: 60, reps: 8 },
-    { weight: 62.5, reps: 6 },
+    { weight: 60, reps: 8, kind: 'normal' },
+    { weight: 62.5, reps: 6, kind: 'normal' },
   ]);
   assert.equal(d.exercises[0].best.weight, 62.5);
   assert.equal(d.exercises[0].best.repsAtWeight, 6);
@@ -854,7 +854,7 @@ test('backup: export, check and restore everything', async () => {
 
   const backup = await bk.createBackup(db);
   assert.equal(backup.app, 'ironlog');
-  assert.equal(backup.version, 6);
+  assert.equal(backup.version, 7);
   assert.deepEqual(bk.summarize(backup), { workouts: 1, foodDays: 1, measurements: 1, recipes: 0, photos: 0 });
   const text = JSON.stringify(backup);
   assert.match(bk.backupFileName(new Date(2026, 10, 8)), /^ironlog-backup-2026-11-08\.json$/);
@@ -863,7 +863,7 @@ test('backup: export, check and restore everything', async () => {
   const db2 = fakeDb();
   await dbm.migrate(db2);
   await dbm.setSetting(db2, 'profile_name', 'Someone else');
-  await bk.restoreBackup(db2, bk.parseBackup(text, 6));
+  await bk.restoreBackup(db2, bk.parseBackup(text, 7));
   assert.equal(await dbm.getSetting(db2, 'profile_name', ''), 'Mark');
   assert.equal((await fdb.dayLog(db2, '2026-11-18')).length, 1);
   assert.equal(await fdb.dayWater(db2, '2026-11-18'), 500);
@@ -910,4 +910,64 @@ test('exercise search forgives typos: swaps, missing letters, no spaces, muscles
   const { searchExercisesInfo } = require('../src/lib/search');
   assert.equal(searchExercisesInfo('sqaut', lib).typo, true);
   assert.equal(searchExercisesInfo('squat', lib).typo, false);
+});
+
+test('set types, warm-ups left out of stats and records, notes, moving exercises', async () => {
+  const { markPRs, NO_BEST } = await import('../src/lib/records');
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const [a, b, c] = (await dbm.listExercises(db)).slice(0, 3);
+  const id = await dbm.startWorkout(db);
+  for (const ex of [a, b, c]) await dbm.addExerciseToWorkout(db, id, ex.id);
+  let d = (await dbm.getWorkoutDetail(db, id))!;
+  const we = d.exercises[0];
+  await dbm.addSet(db, we.id);
+  d = (await dbm.getWorkoutDetail(db, id))!;
+  const [warm, work] = d.exercises[0].sets;
+  assert.equal(warm.kind, 'normal');
+  await dbm.setSetKind(db, warm.id, 'warmup');
+  await db.runAsync('UPDATE sets SET weight = 40, reps = 10, done = 1 WHERE id = ?', warm.id);
+  await db.runAsync('UPDATE sets SET weight = 60, reps = 8, done = 1 WHERE id = ?', work.id);
+  await dbm.finishWorkout(db, id);
+  // Only the working set counts: 1 set, 480 kg.
+  const [w] = await dbm.listFinishedWorkouts(db);
+  assert.equal(w.set_count, 1);
+  assert.equal(w.volume, 480);
+  // Warm-ups never get records, and a heavy warm-up doesn't raise the bar.
+  const prs = markPRs(
+    [
+      { weight: 100, reps: 5, done: 1, kind: 'warmup' },
+      { weight: 60, reps: 8, done: 1, kind: 'normal' },
+    ],
+    NO_BEST,
+  );
+  assert.equal(prs[0].length, 0);
+  // The next workout starts with the same set types as last time.
+  const id2 = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, id2, a.id);
+  const next = (await dbm.getWorkoutDetail(db, id2))!.exercises[0].sets.map((s) => s.kind);
+  assert.deepEqual(next, ['warmup', 'normal']);
+
+  // Notes stay with the exercise and show in workouts.
+  await dbm.setExerciseNotes(db, a.id, '  Seat 4, narrow grip ');
+  assert.equal((await dbm.getWorkoutDetail(db, id2))!.exercises[0].notes, 'Seat 4, narrow grip');
+
+  // Moving exercises in a workout and in a routine.
+  await dbm.addExerciseToWorkout(db, id2, b.id);
+  await dbm.addExerciseToWorkout(db, id2, c.id);
+  const order = async () => (await dbm.getWorkoutDetail(db, id2))!.exercises.map((e) => e.exercise_id);
+  const weIds = (await dbm.getWorkoutDetail(db, id2))!.exercises.map((e) => e.id);
+  await dbm.moveWorkoutExercise(db, weIds[2], -1);
+  assert.deepEqual(await order(), [a.id, c.id, b.id]);
+  await dbm.moveWorkoutExercise(db, weIds[0], -1); // already first: nothing happens
+  assert.deepEqual(await order(), [a.id, c.id, b.id]);
+  await dbm.moveWorkoutExercise(db, weIds[0], 1);
+  assert.deepEqual(await order(), [c.id, a.id, b.id]);
+
+  const r = await dbm.createRoutine(db, 'Push');
+  for (const ex of [a, b]) await dbm.addExerciseToRoutine(db, r, ex.id);
+  const rex = await db.getAllAsync('SELECT id, exercise_id FROM routine_exercises WHERE routine_id = ? ORDER BY position', r);
+  await dbm.moveRoutineExercise(db, rex[1].id, -1);
+  const after = await db.getAllAsync('SELECT exercise_id FROM routine_exercises WHERE routine_id = ? ORDER BY position', r);
+  assert.deepEqual(after.map((x: { exercise_id: number }) => x.exercise_id), [b.id, a.id]);
 });
