@@ -562,6 +562,19 @@ export async function logSavedMeal(db: SQLiteDatabase, id: number, day: string, 
   return ids;
 }
 
+/** Puts a deleted saved meal back (for Undo). */
+export async function restoreSavedMeal(db: SQLiteDatabase, m: SavedMeal): Promise<void> {
+  await db.runAsync(
+    'INSERT OR REPLACE INTO saved_meals (id, name, meal, items, created_at, used_at) VALUES (?, ?, ?, ?, ?, ?)',
+    m.id,
+    m.name,
+    m.meal,
+    JSON.stringify(m.items),
+    m.usedAt,
+    m.usedAt,
+  );
+}
+
 export async function deleteSavedMeal(db: SQLiteDatabase, id: number): Promise<void> {
   await db.runAsync('DELETE FROM saved_meals WHERE id = ?', id);
 }

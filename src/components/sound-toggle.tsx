@@ -24,7 +24,7 @@ const PREVIEWS: { name: SoundName; label: string; icon: IconName }[][] = [
 ];
 
 /** Speaker button that opens the sound settings: on/off, volume and previews (all remembered). */
-export function SoundToggle({ size }: { size?: number } = {}) {
+export function SoundToggle({ size, framed }: { size?: number; framed?: boolean } = {}) {
   const db = useSQLiteContext();
   const [open, setOpen] = useState(false);
   const [on, setOn] = useState(sound.isEnabled());
@@ -54,13 +54,29 @@ export function SoundToggle({ size }: { size?: number } = {}) {
 
   return (
     <>
-      <IconButton
-        icon={icon}
-        label="Sound settings"
-        size={size}
-        color={on ? C.textDim : C.textFaint}
-        onPress={() => setOpen(true)}
-      />
+      {framed ? (
+        // A round button with a soft ring, so it reads as a control and shows on/off at a glance.
+        <Pressable
+          onPress={() => setOpen(true)}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={`Sound settings, ${on ? `on, volume ${Math.round(volume * 100)} percent` : 'off'}`}
+          style={({ pressed }) => [
+            styles.framed,
+            on ? styles.framedOn : styles.framedOff,
+            pressed && { transform: [{ scale: 0.94 }], opacity: 0.85 },
+          ]}>
+          <Ionicons name={icon} size={size ?? 24} color={on ? C.accent : C.textFaint} />
+        </Pressable>
+      ) : (
+        <IconButton
+          icon={icon}
+          label="Sound settings"
+          size={size}
+          color={on ? C.textDim : C.textFaint}
+          onPress={() => setOpen(true)}
+        />
+      )}
       <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
         <View style={styles.root}>
           <Animated.View entering={FadeIn.duration(150)} style={StyleSheet.absoluteFill}>
@@ -127,6 +143,16 @@ export function SoundToggle({ size }: { size?: number } = {}) {
 }
 
 const styles = StyleSheet.create({
+  framed: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  framedOn: { backgroundColor: C.accentDim, borderColor: C.accentLine },
+  framedOff: { backgroundColor: C.card, borderColor: C.border },
   root: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: S.lg },
   backdrop: { flex: 1, backgroundColor: 'rgba(3,6,8,0.72)' },
   card: {

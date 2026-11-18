@@ -118,9 +118,9 @@ export default function AddFoodScreen() {
 
   const forgetSaved = async (id: number, name: string) => {
     const ok = await confirm({
-      title: `Forget "${name}"?`,
+      title: `Delete "${name}"?`,
       message: 'It disappears from your saved meals. Days you already logged stay as they are.',
-      confirmLabel: 'Forget',
+      confirmLabel: 'Delete',
       destructive: true,
     });
     if (!ok) return;

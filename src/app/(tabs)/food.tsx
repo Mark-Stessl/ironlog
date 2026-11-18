@@ -28,6 +28,7 @@ import {
   goalsFrom,
   logSavedMeal,
   restoreLogEntry,
+  restoreSavedMeal,
   saveMeal,
   savedMeals,
   setMealPhoto,
@@ -37,6 +38,7 @@ import {
   type SavedMeal,
 } from '@/lib/food-db';
 import { playFoodAdded } from '@/lib/food-sounds';
+import { confirm } from '@/lib/dialog';
 import { haptic } from '@/lib/haptics';
 import { pickPhoto } from '@/lib/photo';
 import { sound } from '@/lib/sound';
@@ -146,6 +148,22 @@ export default function FoodTab() {
         undo: () => deleteSavedMeal(db, res.meal.id),
       });
     }
+    reload();
+  };
+
+  const forgetSaved = async (m: SavedMeal) => {
+    const ok = await confirm({
+      title: `Delete "${m.name}"?`,
+      message: 'It disappears from your usual meals. Days you already logged stay as they are.',
+      confirmLabel: 'Delete',
+      icon: 'bookmark-outline',
+      destructive: true,
+    });
+    if (!ok) return;
+    await deleteSavedMeal(db, m.id);
+    haptic.tap();
+    sound.play('foodRemove');
+    showToast({ text: `Deleted ${m.name}`, icon: 'trash-outline', undo: () => restoreSavedMeal(db, m) });
     reload();
   };
 
@@ -294,19 +312,28 @@ export default function FoodTab() {
                   .filter((x) => x.meal === m.key)
                   .slice(0, 3)
                   .map((x) => (
-                    <Pressable
-                      key={x.id}
-                      onPress={() => addSaved(x, m.key)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Add ${x.name}`}
-                      style={({ pressed }) => [styles.usual, pressed && { opacity: 0.7 }]}>
-                      <Ionicons name="bookmark" size={14} color={C.accent} />
-                      <Text style={styles.usualName} numberOfLines={1}>
-                        {x.name}
-                      </Text>
-                      <Text style={text.faint}>{Math.round(x.total.kcal ?? 0)} kcal</Text>
-                      <Ionicons name="add" size={18} color={C.accent} />
-                    </Pressable>
+                    <View key={x.id} style={styles.usualRow}>
+                      <Pressable
+                        onPress={() => addSaved(x, m.key)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add ${x.name}`}
+                        style={({ pressed }) => [styles.usual, pressed && { opacity: 0.7 }]}>
+                        <Ionicons name="bookmark" size={14} color={C.accent} />
+                        <Text style={styles.usualName} numberOfLines={1}>
+                          {x.name}
+                        </Text>
+                        <Text style={text.faint}>{Math.round(x.total.kcal ?? 0)} kcal</Text>
+                        <Ionicons name="add" size={18} color={C.accent} />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => forgetSaved(x)}
+                        hitSlop={4}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete usual meal ${x.name}`}
+                        style={({ pressed }) => [styles.usualDelete, pressed && { backgroundColor: C.cardHi }]}>
+                        <Ionicons name="trash-outline" size={16} color={C.textDim} />
+                      </Pressable>
+                    </View>
                   ))}
               </View>
             )}
@@ -401,20 +428,7 @@ export default function FoodTab() {
           </View>
         </View>
 
-        <View style={styles.dayNav}>
-          <IconButton icon="chevron-back" label="Previous day" onPress={() => setDay(addDays(day, -1))} />
-          <Pressable onPress={() => setDay(today)} accessibilityRole="button" accessibilityLabel="Go to today">
-            <Animated.Text key={day} entering={FadeIn.duration(200)} style={styles.day}>
-              {relativeDay(day)}
-            </Animated.Text>
-          </Pressable>
-          <IconButton
-            icon="chevron-forward"
-            label="Next day"
-            onPress={() => day < today && setDay(addDays(day, 1))}
-            color={day < today ? C.textDim : C.border}
-          />
-        </View>
+        <DaySwitcher day={day} today={today} onChange={setDay} />
 
         {desktop ? (
           <View style={styles.columns}>
@@ -455,6 +469,83 @@ export default function FoodTab() {
           ) : null}
         </Animated.View>
       ) : null}
+    </View>
+  );
+}
+
+/** "Thu 19" style label for the buttons next to the current day. */
+function shortDay(key: string, today: string): string {
+  if (key === today) return 'Today';
+  if (key === addDays(today, -1)) return 'Yesterday';
+  const d = new Date(dayStart(key));
+  return `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${d.getDate()}`;
+}
+
+/**
+ * Previous / next day as labelled buttons ("‹ Yesterday", "Thu 19 ›") around the
+ * current day and its date, so it's obvious you can move between days.
+ */
+function DaySwitcher({ day, today, onChange }: { day: string; today: string; onChange: (d: string) => void }) {
+  const prev = addDays(day, -1);
+  const next = addDays(day, 1);
+  const canNext = day < today;
+  const date = new Date(dayStart(day)).toLocaleDateString('en-US', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+  const go = (d: string) => {
+    haptic.tap();
+    onChange(d);
+  };
+  return (
+    <View style={styles.daySwitch}>
+      <Pressable
+        onPress={() => go(prev)}
+        accessibilityRole="button"
+        accessibilityLabel={`Previous day, ${shortDay(prev, today)}`}
+        style={({ pressed }) => [styles.dayStep, pressed && styles.dayStepPressed]}>
+        <Ionicons name="chevron-back" size={18} color={C.accent} />
+        <Text style={styles.dayStepText} numberOfLines={1}>
+          {shortDay(prev, today)}
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={() => day !== today && go(today)}
+        disabled={day === today}
+        accessibilityRole="button"
+        accessibilityLabel={day === today ? `Today, ${date}` : `${date}. Go back to today`}
+        style={styles.dayCenter}>
+        <Animated.Text key={day} entering={FadeIn.duration(200)} style={styles.day} numberOfLines={1}>
+          {relativeDay(day)}
+        </Animated.Text>
+        {day === today ? (
+          <Text style={styles.daySub} numberOfLines={1}>
+            {date}
+          </Text>
+        ) : (
+          <View style={styles.backToday}>
+            <Ionicons name="return-down-back" size={11} color={C.accent} />
+            <Text style={styles.backTodayText}>Back to today</Text>
+          </View>
+        )}
+      </Pressable>
+      <Pressable
+        onPress={() => canNext && go(next)}
+        disabled={!canNext}
+        accessibilityRole="button"
+        accessibilityLabel={canNext ? `Next day, ${shortDay(next, today)}` : 'Next day (no days after today)'}
+        style={({ pressed }) => [
+          styles.dayStep,
+          styles.dayStepRight,
+          !canNext && styles.dayStepOff,
+          pressed && canNext && styles.dayStepPressed,
+        ]}>
+        <Text style={[styles.dayStepText, !canNext && { color: C.textFaint }]} numberOfLines={1}>
+          {canNext ? shortDay(next, today) : 'Tomorrow'}
+        </Text>
+        <Ionicons name="chevron-forward" size={18} color={canNext ? C.accent : C.textFaint} />
+      </Pressable>
     </View>
   );
 }
@@ -513,8 +604,29 @@ function EntryRow({
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'flex-end', gap: S.md },
   headIcons: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  dayNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: S.xs },
-  day: { color: C.text, fontFamily: F.displaySemi, fontSize: 16 },
+  daySwitch: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginBottom: S.xs },
+  dayStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    height: 40,
+    minWidth: 96,
+    paddingLeft: 8,
+    paddingRight: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
+  dayStepRight: { paddingLeft: 12, paddingRight: 8, justifyContent: 'flex-end' },
+  dayStepOff: { borderColor: C.border, backgroundColor: 'transparent', opacity: 0.6 },
+  dayStepPressed: { transform: [{ scale: 0.96 }], opacity: 0.8 },
+  dayStepText: { color: C.text, fontFamily: F.semi, fontSize: 13, flexShrink: 1 },
+  dayCenter: { flex: 1, minWidth: 0, alignItems: 'center', gap: 1 },
+  day: { color: C.text, fontFamily: F.displaySemi, fontSize: 17 },
+  daySub: { color: C.textFaint, fontFamily: F.medium, fontSize: 11 },
+  backToday: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  backTodayText: { color: C.accent, fontFamily: F.semi, fontSize: 11 },
   columns: { flexDirection: 'row', alignItems: 'flex-start', gap: S.xl },
   summary: { gap: S.lg, padding: S.lg },
   summaryTop: { flexDirection: 'row', alignItems: 'center', gap: S.xl },
@@ -558,7 +670,18 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: C.borderHi,
   },
+  usualRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  usualDelete: {
+    width: 42,
+    height: 42,
+    borderRadius: R.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
   usual: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: S.sm,

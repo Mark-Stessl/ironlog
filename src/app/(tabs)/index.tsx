@@ -63,7 +63,7 @@ export default function WorkoutTab() {
       <PageHeader
         title={greeting()}
         sub={week.length ? motivation(week.length) : 'Ready when you are.'}
-        right={<SoundToggle />}
+        right={<SoundToggle framed size={24} />}
       />
 
       <WeekStrip finishedAt={finishedAt} restDays={data?.rest} />

@@ -50,9 +50,9 @@ export function SavedMealRow({
         onPress={onDelete}
         hitSlop={6}
         accessibilityRole="button"
-        accessibilityLabel={`Forget saved meal ${meal.name}`}
+        accessibilityLabel={`Delete saved meal ${meal.name}`}
         style={(s: PressState) => [styles.forget, (s.hovered || s.pressed) && { backgroundColor: C.cardHi }]}>
-        <Ionicons name="close" size={15} color={C.textFaint} />
+        <Ionicons name="trash-outline" size={16} color={C.textDim} />
       </Pressable>
       <Pressable
         onPress={async () => {
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   },
   name: { color: C.text, fontFamily: F.medium, fontSize: 14 },
   sub: { color: C.textFaint, fontFamily: F.regular, fontSize: 12, marginTop: 1 },
-  forget: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  forget: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   quick: {
     width: 32,
     height: 32,
