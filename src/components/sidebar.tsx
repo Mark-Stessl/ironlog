@@ -12,7 +12,12 @@ import { C, F, R, S } from '@/lib/theme';
 
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
-const NAV: { label: string; icon: IconName; href: '/' | '/food' | '/history' | '/profile'; match: (p: string) => boolean }[] = [
+const NAV: {
+  label: string;
+  icon: IconName;
+  href: '/' | '/food' | '/recipes' | '/history' | '/profile';
+  match: (p: string) => boolean;
+}[] = [
   {
     label: 'Workout',
     icon: 'barbell-outline',
@@ -23,7 +28,16 @@ const NAV: { label: string; icon: IconName; href: '/' | '/food' | '/history' | '
     label: 'Food',
     icon: 'nutrition-outline',
     href: '/food',
-    match: (p) => ['/food', '/recipe-new', '/nutrition-goals'].some((x) => p.startsWith(x)),
+    match: (p) =>
+      !p.startsWith('/food/r:') &&
+      !p.startsWith('/food/u:') &&
+      ['/food', '/recipe-new', '/nutrition-goals'].some((x) => p.startsWith(x)),
+  },
+  {
+    label: 'Recipes',
+    icon: 'book-outline',
+    href: '/recipes',
+    match: (p) => p.startsWith('/recipes') || p.startsWith('/food/r:') || p.startsWith('/food/u:'),
   },
   { label: 'History', icon: 'time-outline', href: '/history', match: (p) => p.startsWith('/history') },
   {

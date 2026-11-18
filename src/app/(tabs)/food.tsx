@@ -2,22 +2,25 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } from 'react-native-reanimated';
 
 import { CalorieRing, DetailBars, EnergySplit, MacroBars, MicroBars, WeekBars } from '@/components/nutrition-charts';
 import { FoodThumb, type ThumbData } from '@/components/food-thumb';
+import { RecipeCard } from '@/components/recipe-card';
 import { SoundToggle } from '@/components/sound-toggle';
 import { Card, IconButton, ListCard, ListRow, Page, SectionTitle, text, type IconName } from '@/components/ui';
 import { WaterCard } from '@/components/water-card';
 import { addDays, dayKey, dayStart, relativeDay } from '@/lib/calendar';
 import {
   addWater,
+  allFoodItems,
   copyMeal,
   dailyTotals,
   dayLog,
   dayMealPhotos,
   dayWater,
+  favoriteRefs,
   deleteLogEntries,
   deleteLogEntry,
   deleteSavedMeal,
@@ -38,7 +41,7 @@ import { haptic } from '@/lib/haptics';
 import { pickPhoto } from '@/lib/photo';
 import { sound } from '@/lib/sound';
 import { sum } from '@/lib/nutrition';
-import { MEALS, mealLabel, type Meal } from '@/lib/recipes';
+import { MEALS, mealForTime, mealLabel, type Meal } from '@/lib/recipes';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -61,11 +64,30 @@ export default function FoodTab() {
       dayMealPhotos(d, day),
       savedMeals(d),
     ]);
+    const [items, favs] = await Promise.all([allFoodItems(d), favoriteRefs(d)]);
+    const ideaMeal = mealForTime();
+    const ideas = items
+      .filter((f) => f.recipe?.meal === ideaMeal)
+      .sort((a, b) => b.useCount - a.useCount)
+      .slice(0, 10);
     const thumbs = await thumbsFor(
       d,
       log.map((e) => e.ref),
     );
-    return { log, yesterday, water, settings, goals: goalsFrom(settings), week, photos, thumbs, saved };
+    return {
+      log,
+      yesterday,
+      water,
+      settings,
+      goals: goalsFrom(settings),
+      week,
+      photos,
+      thumbs,
+      saved,
+      ideas,
+      ideaMeal,
+      favs: new Set(favs),
+    };
   }, day);
 
   const log = data?.log ?? [];
@@ -289,6 +311,39 @@ export default function FoodTab() {
     </View>
   );
 
+  // Recipe ideas for the time of day, so recipes are visible without opening "Add".
+  const ideas = data?.ideas.length ? (
+    <View>
+      <SectionTitle
+        title={`Ideas for ${mealLabel(data.ideaMeal).toLowerCase()}`}
+        right={
+          <Pressable onPress={() => router.push('/recipes')} accessibilityRole="link" hitSlop={8} style={styles.seeAll}>
+            <Text style={styles.seeAllText}>All recipes</Text>
+            <Ionicons name="chevron-forward" size={14} color={C.accent} />
+          </Pressable>
+        }
+      />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ideas}>
+        {data.ideas.map((f) => (
+          <RecipeCard
+            key={f.ref}
+            item={f}
+            width={desktop ? 180 : 156}
+            favorite={data.favs.has(f.ref)}
+            onPress={() => router.push({ pathname: '/food/[ref]', params: { ref: f.ref, meal: data.ideaMeal, day } })}
+          />
+        ))}
+        <Pressable
+          onPress={() => router.push('/recipes')}
+          accessibilityRole="link"
+          style={({ pressed }) => [styles.moreCard, { width: desktop ? 140 : 120 }, pressed && { opacity: 0.7 }]}>
+          <Ionicons name="book-outline" size={22} color={C.accent} />
+          <Text style={styles.seeAllText}>All recipes</Text>
+        </Pressable>
+      </ScrollView>
+    </View>
+  ) : null;
+
   const side = goals ? (
     <View style={{ gap: S.sm }}>
       <SectionTitle title="Water" />
@@ -329,6 +384,7 @@ export default function FoodTab() {
               {data?.settings.profile ? 'Goals from your body profile' : 'EU reference intakes'}
             </Text>
           </View>
+          <IconButton icon="book-outline" label="All recipes" onPress={() => router.push('/recipes')} />
           <SoundToggle />
           <IconButton icon="options-outline" label="Nutrition goals" onPress={() => router.push('/nutrition-goals')} />
         </View>
@@ -353,6 +409,7 @@ export default function FoodTab() {
             <View style={{ flex: 1.15, minWidth: 0 }}>
               {summary}
               {meals}
+              {ideas}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>{side}</View>
           </View>
@@ -360,6 +417,7 @@ export default function FoodTab() {
           <>
             {summary}
             {meals}
+            {ideas}
             {side}
           </>
         )}
@@ -475,6 +533,18 @@ const styles = StyleSheet.create({
     borderColor: C.accentLine,
   },
   copyLabel: { color: C.text, fontFamily: F.semi, fontSize: 12 },
+  seeAll: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  seeAllText: { color: C.accent, fontFamily: F.semi, fontSize: 13 },
+  ideas: { gap: S.sm, paddingBottom: 4 },
+  moreCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: C.borderHi,
+  },
   usual: {
     flexDirection: 'row',
     alignItems: 'center',

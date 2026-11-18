@@ -44,6 +44,7 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Pictures**: a photo for every built-in recipe, package photos for supermarket products, an emoji for every food, and your own photos of meals, foods and recipes (taken or picked from the gallery, kept only on the phone)
 - **Goals**: EU reference intakes by default; with age, height, weight and activity, calories come from the Henry equation × EFSA activity level, protein from g per kg body weight (ISSN 1.4–2.0), fat 30 % of energy, water from EFSA (2.0 L men / 1.6 L women from drinks); every number can be overridden
 - Quick add, "same as yesterday" for a whole meal, edit entries, browse earlier days
+- **Recipe overview**: all recipes as photo cards (filter by meal, favourites or your own, sort by most used, most protein, fewest kcal or quickest, search by ingredient) with your saved meals on top; "Ideas for lunch" (by time of day) on the Food tab
 - **One-tap remove** with Undo on every logged entry
 - **Favourites** (star on any food or recipe) and **saved meals**: the bookmark next to a meal saves it as a usual meal, which is then added again with one tap from the empty meal or the add screen
 - **Soft sound effects** for adding food, removing, water (and reaching the water goal), reaching the protein goal, saving a meal and scanning a barcode; quieter than the workout sounds, all fade in, same on/off switch and volume
