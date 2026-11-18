@@ -5,7 +5,8 @@ import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { Modal, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -32,7 +33,7 @@ import { ExerciseImage } from '@/components/exercise-image';
 import { RestBar } from '@/components/rest-bar';
 import { NumberPadProvider, PAD_HEIGHT, cleanNumber, useNumberPad } from '@/components/number-pad';
 import { PlateButton, usesBarbell } from '@/components/plate-calculator';
-import { ReorderList } from '@/components/reorder-list';
+import { DragSortProvider, useDragItem } from '@/components/drag-sort';
 import { ExerciseSearch } from '@/components/exercise-search';
 import {
   Button,
@@ -87,6 +88,12 @@ import { heat, muscleStats } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { primeKeyboard } from '@/lib/keyboard';
 import { useFocusData } from '@/lib/use-focus-data';
+
+/** How far a set row slides open to show its bin. */
+const BIN_WIDTH = 64;
+
+/** Height of an exercise card while you drag the exercises around. */
+const FOLDED = 60;
 
 const REST_OPTIONS = [0, 60, 90, 120, 150, 180];
 
@@ -277,13 +284,7 @@ function ActiveWorkout({
     router.back();
   };
 
-  // Hold an exercise: the cards fold into a list you can drag to rearrange.
-  const [reordering, setReordering] = useState(false);
-  const startReorder = () => {
-    if (exercises.length < 2) return;
-    haptic.success();
-    setReordering(true);
-  };
+  const scrollRef = useRef<ScrollViewInstance>(null);
 
   const addFromPanel = async (exerciseId: number) => {
     await addExerciseToWorkout(db, workout.id, exerciseId);
@@ -294,6 +295,7 @@ function ActiveWorkout({
     <NumberPadProvider>
       <View style={{ flex: 1 }}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.page, desktop && styles.pageDesktop, { paddingBottom: insets.bottom + 120 }]}
           keyboardShouldPersistTaps="handled">
           <View style={styles.topActions}>
@@ -348,65 +350,53 @@ function ActiveWorkout({
             />
           ) : null}
 
-          {reordering ? (
-            <Animated.View entering={FadeIn.duration(180)} style={{ gap: S.sm }}>
-              <View style={styles.reorderBar}>
-                <Ionicons name="reorder-three" size={20} color={C.accent} />
-                <Text style={[text.dim, { flex: 1, color: C.text }]}>Drag the exercises into the order you want</Text>
-                <Button label="Done" kind="primary" small onPress={() => setReordering(false)} />
-              </View>
-              <ReorderList
-                items={exercises.map((ex) => ({
-                  id: ex.id,
-                  title: ex.name,
-                  subtitle: `${plural(ex.sets.length, 'set')} · ${ex.muscle}`,
-                  left: <ExerciseImage name={ex.name} equipment={ex.equipment} size={36} radius={8} />,
-                }))}
-                onReorder={async (ids) => {
-                  await setExerciseOrder(db, 'workout_exercises', ids);
+          {/* Hold an exercise and drag it: the cards fold while you move it. */}
+          <DragSortProvider
+            ids={exercises.map((ex) => ex.id)}
+            step={FOLDED + S.md}
+            scrollRef={scrollRef}
+            roomBelow
+            onReorder={async (ids) => {
+              await setExerciseOrder(db, 'workout_exercises', ids);
+              await sync();
+            }}>
+            {exercises.map((ex) => (
+              <ExerciseCard
+                key={ex.id}
+                ex={ex}
+                onNotes={async (notes) => {
+                  await setExerciseNotes(db, ex.exercise_id, notes);
+                }}
+                onSetKind={async (setId, kind) => {
+                  await setSetKind(db, setId, kind);
+                  haptic.tap();
+                  await sync();
+                }}
+                onPatchSet={patchSet}
+                onAddSet={async () => {
+                  await addSet(db, ex.id);
+                  await sync();
+                }}
+                onDeleteSet={async (setId) => {
+                  await deleteSet(db, setId);
+                  await sync();
+                }}
+                onRemove={async () => {
+                  const ok = await confirm({
+                    title: `Remove ${ex.name}?`,
+                    message: 'Its sets in this workout will be deleted.',
+                    confirmLabel: 'Remove',
+                    destructive: true,
+                  });
+                  if (!ok) return;
+                  await removeWorkoutExercise(db, ex.id);
                   await sync();
                 }}
               />
-            </Animated.View>
-          ) : null}
+            ))}
+          </DragSortProvider>
 
-          {(reordering ? [] : exercises).map((ex) => (
-            <ExerciseCard
-              key={ex.id}
-              ex={ex}
-              onStartReorder={startReorder}
-              onNotes={async (notes) => {
-                await setExerciseNotes(db, ex.exercise_id, notes);
-              }}
-              onSetKind={async (setId, kind) => {
-                await setSetKind(db, setId, kind);
-                haptic.tap();
-                await sync();
-              }}
-              onPatchSet={patchSet}
-              onAddSet={async () => {
-                await addSet(db, ex.id);
-                await sync();
-              }}
-              onDeleteSet={async (setId) => {
-                await deleteSet(db, setId);
-                await sync();
-              }}
-              onRemove={async () => {
-                const ok = await confirm({
-                  title: `Remove ${ex.name}?`,
-                  message: 'Its sets in this workout will be deleted.',
-                  confirmLabel: 'Remove',
-                  destructive: true,
-                });
-                if (!ok) return;
-                await removeWorkoutExercise(db, ex.id);
-                await sync();
-              }}
-            />
-          ))}
-
-          {!desktop && !reordering ? (
+          {!desktop ? (
             <Button
               label="Add exercise"
               icon="add"
@@ -503,7 +493,6 @@ const SET_KIND: Record<Exclude<SetKind, 'normal'>, { letter: string; color: stri
 
 function ExerciseCard({
   ex,
-  onStartReorder,
   onNotes,
   onSetKind,
   onPatchSet,
@@ -512,7 +501,6 @@ function ExerciseCard({
   onRemove,
 }: {
   ex: WorkoutExercise;
-  onStartReorder: () => void;
   onNotes: (notes: string) => void;
   onSetKind: (setId: number, kind: SetKind) => void;
   onPatchSet: (set: SetRow, patch: { weight: number | null; reps: number | null; done: boolean }) => void;
@@ -525,78 +513,99 @@ function ExerciseCard({
   // Normal sets are numbered 1, 2, 3...; warm-ups, drop sets and failure sets show a letter.
   let n = 0;
   const numbers = ex.sets.map((s) => (s.kind === 'normal' || !s.kind ? ++n : 0));
+  const box = useRef<React.ComponentRef<typeof Animated.View>>(null);
+  const drag = useDragItem(ex.id, box as unknown as React.RefObject<View | null>);
   return (
-    <Card style={{ padding: S.md, gap: 2 }}>
-      <View style={styles.exHead}>
-        <Pressable
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}
-          onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}
-          onLongPress={onStartReorder}
-          delayLongPress={400}
-          accessibilityHint="Hold to rearrange the exercises">
-          <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.exName} numberOfLines={1}>
-              {ex.name}
-            </Text>
-            <Text style={text.faint} numberOfLines={1}>
-              {ex.muscle} · {ex.equipment}
-            </Text>
-          </View>
-        </Pressable>
-        {usesBarbell(ex.equipment, ex.name) ? (
-          <PlateButton
-            weight={
-              ex.sets.find((x) => !x.done && x.weight)?.weight ??
-              ex.sets.find((x) => x.weight)?.weight ??
-              ex.previous.find((x) => x.weight)?.weight ??
-              null
-            }
-          />
-        ) : null}
-        <IconButton icon="trash-outline" label={`Remove ${ex.name}`} onPress={onRemove} color={C.textFaint} size={16} />
-      </View>
+    <Animated.View ref={box} style={[styles.dragBox, drag.style]}>
+      <Card style={[{ padding: S.md, gap: 2 }, drag.folded && styles.folded, drag.held && styles.held]}>
+        <View style={[styles.exHead, drag.folded && { marginBottom: 0 }]}>
+          <GestureDetector gesture={drag.gesture} touchAction="pan-y">
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Pressable
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}
+                onPress={() =>
+                  !drag.justDragged() &&
+                  router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })
+                }
+                accessibilityHint="Hold and drag to move the exercise">
+                <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.exName} numberOfLines={1}>
+                    {ex.name}
+                  </Text>
+                  <Text style={text.faint} numberOfLines={1}>
+                    {drag.folded ? `${plural(ex.sets.length, 'set')} · ${ex.muscle}` : `${ex.muscle} · ${ex.equipment}`}
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
+          </GestureDetector>
+          {drag.folded ? <Ionicons name="reorder-three" size={24} color={drag.held ? C.accent : C.textDim} /> : null}
+          {drag.folded ? null : usesBarbell(ex.equipment, ex.name) ? (
+            <PlateButton
+              weight={
+                ex.sets.find((x) => !x.done && x.weight)?.weight ??
+                ex.sets.find((x) => x.weight)?.weight ??
+                ex.previous.find((x) => x.weight)?.weight ??
+                null
+              }
+            />
+          ) : null}
+          {drag.folded ? null : (
+            <IconButton
+              icon="trash-outline"
+              label={`Remove ${ex.name}`}
+              onPress={onRemove}
+              color={C.textFaint}
+              size={16}
+            />
+          )}
+        </View>
+        {drag.folded ? null : (
+          <>
+            {/* The exercise's own note: it's saved with the exercise and shows up every time. */}
+            <View style={[styles.noteRow, notes ? styles.noteRowFilled : null]}>
+              <Ionicons name="create-outline" size={13} color={notes ? C.gold : C.textFaint} />
+              <TextInput
+                value={notes}
+                onChangeText={setNotes}
+                onBlur={() => notes.trim() !== (ex.notes ?? '') && onNotes(notes)}
+                placeholder="Add a note (seat height, grip…)"
+                placeholderTextColor={C.textFaint}
+                multiline
+                accessibilityLabel={`Note for ${ex.name}`}
+                style={styles.noteInput}
+              />
+            </View>
 
-      {/* The exercise's own note: it's saved with the exercise and shows up every time. */}
-      <View style={[styles.noteRow, notes ? styles.noteRowFilled : null]}>
-        <Ionicons name="create-outline" size={13} color={notes ? C.gold : C.textFaint} />
-        <TextInput
-          value={notes}
-          onChangeText={setNotes}
-          onBlur={() => notes.trim() !== (ex.notes ?? '') && onNotes(notes)}
-          placeholder="Add a note (seat height, grip…)"
-          placeholderTextColor={C.textFaint}
-          multiline
-          accessibilityLabel={`Note for ${ex.name}`}
-          style={styles.noteInput}
-        />
-      </View>
+            <View style={styles.setRow}>
+              <Text style={[styles.colHead, styles.colNum]}>Set</Text>
+              <Text style={[styles.colHead, { flex: 1 }]}>Previous</Text>
+              <Text style={[styles.colHead, styles.colInput]}>kg</Text>
+              <Text style={[styles.colHead, styles.colInput]}>Reps</Text>
+              <View style={styles.colCheck} />
+            </View>
 
-      <View style={styles.setRow}>
-        <Text style={[styles.colHead, styles.colNum]}>Set</Text>
-        <Text style={[styles.colHead, { flex: 1 }]}>Previous</Text>
-        <Text style={[styles.colHead, styles.colInput]}>kg</Text>
-        <Text style={[styles.colHead, styles.colInput]}>Reps</Text>
-        <View style={styles.colCheck} />
-      </View>
+            {ex.sets.map((set, i) => (
+              <SetLine
+                key={set.id}
+                set={set}
+                index={i}
+                number={numbers[i]}
+                onKind={(kind) => onSetKind(set.id, kind)}
+                prev={ex.previous[i]}
+                prs={prs[i]}
+                exercise={ex.name}
+                onPatch={(patch) => onPatchSet(set, patch)}
+                onDelete={() => onDeleteSet(set.id)}
+              />
+            ))}
 
-      {ex.sets.map((set, i) => (
-        <SetLine
-          key={set.id}
-          set={set}
-          index={i}
-          number={numbers[i]}
-          onKind={(kind) => onSetKind(set.id, kind)}
-          prev={ex.previous[i]}
-          prs={prs[i]}
-          exercise={ex.name}
-          onPatch={(patch) => onPatchSet(set, patch)}
-          onDelete={() => onDeleteSet(set.id)}
-        />
-      ))}
-
-      <Button label="Add set" icon="add" kind="ghost" small onPress={onAddSet} style={{ marginTop: 4 }} />
-    </Card>
+            <Button label="Add set" icon="add" kind="ghost" small onPress={onAddSet} style={{ marginTop: 4 }} />
+          </>
+        )}
+      </Card>
+    </Animated.View>
   );
 }
 
@@ -719,112 +728,171 @@ function SetLine({
     onPatch({ weight, reps, done: true });
   };
 
+  // Swipe the row to the left: a bin appears behind it. Swipe all the way to delete straight away.
+  const swipeX = useSharedValue(0);
+  const swipeStart = useRef(0);
+  const swiped = useRef(false);
+  const closeSwipe = () => {
+    swipeX.value = withSpring(0, { damping: 20, stiffness: 260 });
+  };
+  const deleteBySwipe = () => {
+    haptic.warning();
+    swipeX.value = withTiming(-600, { duration: 180 });
+    setTimeout(onDelete, 170);
+  };
+  const swipe = usePanGesture({
+    activeOffsetX: [-12, 12],
+    failOffsetY: [-12, 12],
+    runOnJS: true,
+    onActivate: () => {
+      swiped.current = true;
+      swipeStart.current = swipeX.value;
+      pad.close();
+    },
+    onUpdate: (e) => {
+      const x = swipeStart.current + e.translationX;
+      swipeX.value = x > 0 ? x * 0.15 : x;
+    },
+    onDeactivate: (e) => {
+      const x = swipeX.value;
+      if (x < -220 || (x < -120 && e.velocityX < -900)) deleteBySwipe();
+      else if (x < -36) {
+        haptic.tap();
+        swipeX.value = withSpring(-BIN_WIDTH, { damping: 20, stiffness: 260 });
+      } else closeSwipe();
+      setTimeout(() => (swiped.current = false), 250);
+    },
+  });
+  const frontStyle = useAnimatedStyle(() => ({ transform: [{ translateX: swipeX.value }] }));
+  const binStyle = useAnimatedStyle(() => ({ opacity: Math.min(1, -swipeX.value / 50) }));
+  /** Taps inside the row: ignored right after a swipe; when the bin is showing they just close it. */
+  const tap = (fn: () => void) => () => {
+    if (swiped.current) return;
+    if (swipeX.value < -4) return closeSwipe();
+    fn();
+  };
+
   return (
-    <Animated.View style={[styles.setRow, rowStyle]}>
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, prGlow]}>
-        <LinearGradient
-          colors={['rgba(233,190,88,0.20)', 'rgba(233,190,88,0.03)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[StyleSheet.absoluteFill, { borderRadius: R.sm }]}
-        />
+    <View style={styles.swipeWrap}>
+      <Animated.View style={[styles.swipeBack, binStyle]}>
+        <Pressable
+          onPress={deleteBySwipe}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete set ${index + 1}`}
+          style={styles.binButton}>
+          <Ionicons name="trash-outline" size={19} color="#fff" />
+        </Pressable>
       </Animated.View>
-      <Pressable
-        style={styles.colNum}
-        onPress={openMenu}
-        onLongPress={onDelete}
-        hitSlop={4}
-        accessibilityRole="button"
-        accessibilityLabel={`${label}${pr ? `, ${plural(prs.length, 'record')}` : ''}. Tap to change the set type`}>
-        {pr ? (
-          <Animated.View entering={ZoomIn.springify().damping(8)}>
-            <Ionicons name="trophy" size={13} color={C.gold} />
+      <GestureDetector gesture={swipe} touchAction="pan-y">
+        <Animated.View style={[styles.swipeFront, frontStyle]}>
+          <Animated.View style={[styles.setRow, rowStyle]}>
+            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, prGlow]}>
+              <LinearGradient
+                colors={['rgba(233,190,88,0.20)', 'rgba(233,190,88,0.03)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[StyleSheet.absoluteFill, { borderRadius: R.sm }]}
+              />
+            </Animated.View>
+            <Pressable
+              style={styles.colNum}
+              onPress={tap(openMenu)}
+              onLongPress={onDelete}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityLabel={`${label}${pr ? `, ${plural(prs.length, 'record')}` : ''}. Tap to change the set type`}>
+              {pr ? (
+                <Animated.View entering={ZoomIn.springify().damping(8)}>
+                  <Ionicons name="trophy" size={13} color={C.gold} />
+                </Animated.View>
+              ) : special ? (
+                <View style={[styles.kindBadge, { borderColor: special.color }]}>
+                  <Text style={[styles.kindText, { color: special.color }]}>{special.letter}</Text>
+                </View>
+              ) : (
+                <View style={[styles.numChip, done && styles.numChipDone]}>
+                  <Text style={[styles.setNum, done && { color: C.good }]}>{number}</Text>
+                </View>
+              )}
+            </Pressable>
+            <Pressable
+              style={styles.colPrev}
+              disabled={pr ? false : !prev || done}
+              onPress={tap(() => {
+                if (pr) return showRecords(exercise, index, prs);
+                if (!prev) return;
+                setWeightText(fmtWeight(prev.weight));
+                setRepsText(prev.reps == null ? '' : String(prev.reps));
+                onPatch({ weight: prev.weight, reps: prev.reps, done });
+              })}>
+              {pr ? (
+                <Text style={[styles.prevText, { color: C.gold, fontFamily: F.semi }]} numberOfLines={1}>
+                  {prs.map((p) => PR_LABEL[p.kind]).join(' + ')} PR
+                </Text>
+              ) : (
+                <Text style={styles.prevText} numberOfLines={1}>
+                  {prev ? fmtSet(prev.weight, prev.reps) : '—'}
+                </Text>
+              )}
+            </Pressable>
+            {pad.enabled ? (
+              <PadField
+                value={weightText}
+                placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
+                active={pad.activeKey === keyW}
+                done={done}
+                label={`Set ${index + 1} weight in kg`}
+                onPress={tap(openWeight)}
+              />
+            ) : (
+              <TextInput
+                value={weightText}
+                onChangeText={changeWeight}
+                placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
+                placeholderTextColor={C.textFaint}
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+                accessibilityLabel={`Set ${index + 1} weight in kg`}
+                style={[styles.colInput, styles.input, done && styles.inputDone]}
+              />
+            )}
+            {pad.enabled ? (
+              <PadField
+                value={repsText}
+                placeholder={prev?.reps != null ? String(prev.reps) : '0'}
+                active={pad.activeKey === keyR}
+                done={done}
+                label={`Set ${index + 1} reps`}
+                onPress={tap(openReps)}
+              />
+            ) : (
+              <TextInput
+                value={repsText}
+                onChangeText={changeReps}
+                placeholder={prev?.reps != null ? String(prev.reps) : '0'}
+                placeholderTextColor={C.textFaint}
+                keyboardType="number-pad"
+                selectTextOnFocus
+                accessibilityLabel={`Set ${index + 1} reps`}
+                style={[styles.colInput, styles.input, done && styles.inputDone]}
+              />
+            )}
+            <Pressable
+              onPress={tap(toggle)}
+              hitSlop={8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: done }}
+              accessibilityLabel={`Set ${index + 1} done`}
+              style={styles.colCheck}>
+              <Animated.View style={[styles.check, checkStyle]}>
+                <Ionicons name="checkmark" size={18} color={done ? '#06210F' : C.textFaint} />
+              </Animated.View>
+            </Pressable>
           </Animated.View>
-        ) : special ? (
-          <View style={[styles.kindBadge, { borderColor: special.color }]}>
-            <Text style={[styles.kindText, { color: special.color }]}>{special.letter}</Text>
-          </View>
-        ) : (
-          <View style={[styles.numChip, done && styles.numChipDone]}>
-            <Text style={[styles.setNum, done && { color: C.good }]}>{number}</Text>
-          </View>
-        )}
-      </Pressable>
-      <Pressable
-        style={styles.colPrev}
-        disabled={pr ? false : !prev || done}
-        onPress={() => {
-          if (pr) return showRecords(exercise, index, prs);
-          if (!prev) return;
-          setWeightText(fmtWeight(prev.weight));
-          setRepsText(prev.reps == null ? '' : String(prev.reps));
-          onPatch({ weight: prev.weight, reps: prev.reps, done });
-        }}>
-        {pr ? (
-          <Text style={[styles.prevText, { color: C.gold, fontFamily: F.semi }]} numberOfLines={1}>
-            {prs.map((p) => PR_LABEL[p.kind]).join(' + ')} PR
-          </Text>
-        ) : (
-          <Text style={styles.prevText} numberOfLines={1}>
-            {prev ? fmtSet(prev.weight, prev.reps) : '—'}
-          </Text>
-        )}
-      </Pressable>
-      {pad.enabled ? (
-        <PadField
-          value={weightText}
-          placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
-          active={pad.activeKey === keyW}
-          done={done}
-          label={`Set ${index + 1} weight in kg`}
-          onPress={openWeight}
-        />
-      ) : (
-        <TextInput
-          value={weightText}
-          onChangeText={changeWeight}
-          placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
-          placeholderTextColor={C.textFaint}
-          keyboardType="decimal-pad"
-          selectTextOnFocus
-          accessibilityLabel={`Set ${index + 1} weight in kg`}
-          style={[styles.colInput, styles.input, done && styles.inputDone]}
-        />
-      )}
-      {pad.enabled ? (
-        <PadField
-          value={repsText}
-          placeholder={prev?.reps != null ? String(prev.reps) : '0'}
-          active={pad.activeKey === keyR}
-          done={done}
-          label={`Set ${index + 1} reps`}
-          onPress={openReps}
-        />
-      ) : (
-        <TextInput
-          value={repsText}
-          onChangeText={changeReps}
-          placeholder={prev?.reps != null ? String(prev.reps) : '0'}
-          placeholderTextColor={C.textFaint}
-          keyboardType="number-pad"
-          selectTextOnFocus
-          accessibilityLabel={`Set ${index + 1} reps`}
-          style={[styles.colInput, styles.input, done && styles.inputDone]}
-        />
-      )}
-      <Pressable
-        onPress={toggle}
-        hitSlop={8}
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: done }}
-        accessibilityLabel={`Set ${index + 1} done`}
-        style={styles.colCheck}>
-        <Animated.View style={[styles.check, checkStyle]}>
-          <Ionicons name="checkmark" size={13} color={done ? '#06210F' : C.textFaint} />
         </Animated.View>
-      </Pressable>
+      </GestureDetector>
       {menu ? <SetTypeSheet title={label} kind={kind} hasRecords={pr} onPick={pickFromMenu} /> : null}
-    </Animated.View>
+    </View>
   );
 }
 
@@ -1255,7 +1323,7 @@ const styles = StyleSheet.create({
   colNum: { width: 28, alignItems: 'center', justifyContent: 'center', minHeight: 32 },
   colPrev: { flex: 1, justifyContent: 'center', minHeight: 32 },
   colInput: { width: 60 },
-  colCheck: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  colCheck: { width: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   setNum: { color: C.textDim, fontSize: 13, fontFamily: F.semi, textAlign: 'center' },
   kindBadge: {
     width: 22,
@@ -1281,16 +1349,23 @@ const styles = StyleSheet.create({
   padField: { justifyContent: 'center', alignItems: 'center' },
   padFieldActive: { borderWidth: 1.5, borderColor: C.accent },
   padFieldText: { color: C.text, fontFamily: F.semi, fontSize: 15, fontVariant: ['tabular-nums'] },
-  reorderBar: {
+  swipeWrap: { borderRadius: R.sm, overflow: 'hidden' },
+  swipeBack: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#DC4C4C',
+    borderRadius: R.sm,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: S.sm,
-    padding: S.md,
-    borderRadius: R.lg,
-    borderWidth: 1,
-    borderColor: C.accentLine,
-    backgroundColor: C.accentDim,
+    justifyContent: 'flex-end',
   },
+  binButton: { width: BIN_WIDTH, height: '100%', alignItems: 'center', justifyContent: 'center' },
+  swipeFront: { backgroundColor: C.card, borderRadius: R.sm },
+  dragBox: { shadowColor: '#000', shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+  folded: { height: FOLDED, justifyContent: 'center', paddingVertical: 0 },
+  held: { borderColor: C.accent },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(3,6,8,0.6)' },
   sheet: {
     width: '100%',
@@ -1359,5 +1434,5 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   inputDone: { backgroundColor: 'transparent' },
-  check: { width: 22, height: 22, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  check: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
 });

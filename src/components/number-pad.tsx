@@ -33,7 +33,13 @@ export function cleanNumber(s: string, decimal: boolean): string {
   let t = s.replace(',', '.').replace(decimal ? /[^0-9.]/g : /[^0-9]/g, '');
   if (decimal) {
     const i = t.indexOf('.');
-    if (i >= 0) t = t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, '').slice(0, 2);
+    if (i >= 0)
+      t =
+        t.slice(0, i + 1) +
+        t
+          .slice(i + 1)
+          .replace(/\./g, '')
+          .slice(0, 2);
   }
   t = t.replace(/^0+(?=\d)/, '');
   return t.slice(0, decimal ? 7 : 4);
@@ -101,7 +107,7 @@ function Keys({ target, onKey, onClose }: { target: PadTarget; onKey: (k: string
     <Animated.View
       entering={SlideInDown.springify().damping(20).stiffness(220)}
       exiting={SlideOutDown.duration(160)}
-      style={[styles.pad, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+      style={[styles.pad, { paddingBottom: Math.max(insets.bottom, 10) + BOTTOM_GAP }]}>
       <View style={styles.bar}>
         <Text style={styles.barLabel} numberOfLines={1}>
           {target.label}
@@ -188,8 +194,14 @@ function Key({
   );
 }
 
+/**
+ * Extra room under the keys on phones, so a tap on the bottom row never lands on
+ * the iPhone's swipe-home bar (the web app can't tell where that bar is).
+ */
+const BOTTOM_GAP = Platform.OS === 'web' ? 34 : 6;
+
 /** Space to keep at the bottom of a page while the keypad is open. */
-export const PAD_HEIGHT = 300;
+export const PAD_HEIGHT = 300 + BOTTOM_GAP;
 
 const styles = StyleSheet.create({
   pad: {

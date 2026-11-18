@@ -1,16 +1,26 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputInstance } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type ScrollViewInstance,
+  type TextInputInstance,
+} from 'react-native';
 
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
+import { GestureDetector } from 'react-native-gesture-handler';
 
 import { ExerciseImage } from '@/components/exercise-image';
 import { ExerciseSearch } from '@/components/exercise-search';
-import { ReorderList } from '@/components/reorder-list';
-import { Button, Empty, HeaderButton, IconButton, ListCard, ListRow, text } from '@/components/ui';
+import { DragSortProvider, useDragItem } from '@/components/drag-sort';
+import { Button, Empty, HeaderButton, IconButton, ListCard, text } from '@/components/ui';
 import {
   addExerciseToRoutine,
   deleteRoutine,
@@ -59,8 +69,9 @@ function RoutineEditor({
   const [nameFocused, setNameFocused] = useState(false);
   // Freshly created routines still have the default name: put the cursor in the name field.
   const [isNew] = useState(routine.name === 'New routine');
-  // Hold an exercise to rearrange them by dragging.
-  const [reordering, setReordering] = useState(false);
+  // Hold an exercise and drag it to rearrange.
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const [rowH, setRowH] = useState(57);
 
   const remove = async () => {
     const ok = await confirm({
@@ -98,6 +109,7 @@ function RoutineEditor({
 
   const content = (
     <ScrollView
+      ref={scrollRef}
       contentContainerStyle={[styles.page, desktop && styles.pageDesktop]}
       keyboardShouldPersistTaps="handled">
       <Stack.Screen
@@ -148,79 +160,69 @@ function RoutineEditor({
               : 'Add the machines and exercises for this routine.'
           }
         />
-      ) : reordering ? (
-        <Animated.View entering={FadeIn.duration(180)} style={{ gap: S.sm }}>
-          <View style={styles.reorderBar}>
-            <Ionicons name="reorder-three" size={20} color={C.accent} />
-            <Text style={[text.dim, { flex: 1, color: C.text }]}>Drag the exercises into the order you want</Text>
-            <Button label="Done" kind="primary" small onPress={() => setReordering(false)} />
-          </View>
-          <ReorderList
-            items={exercises.map((ex) => ({
-              id: ex.id,
-              title: ex.name,
-              subtitle: `${plural(ex.target_sets, 'set')} · ${ex.muscle}`,
-              left: <ExerciseImage name={ex.name} equipment={ex.equipment} size={36} radius={8} />,
-            }))}
+      ) : (
+        <ListCard style={{ marginTop: S.sm }}>
+          <DragSortProvider
+            ids={exercises.map((ex) => ex.id)}
+            step={rowH}
+            scrollRef={scrollRef}
             onReorder={async (ids) => {
               await setExerciseOrder(db, 'routine_exercises', ids);
               await reload();
-            }}
-          />
-        </Animated.View>
-      ) : (
-        <ListCard style={{ marginTop: S.sm }}>
-          {exercises.map((ex, i) => (
-            <ListRow
-              key={ex.id}
-              last={i === exercises.length - 1}
-              onLongPress={() => {
-                if (exercises.length < 2) return;
-                haptic.success();
-                setReordering(true);
-              }}>
-              <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={text.strong} numberOfLines={1}>
-                  {ex.name}
-                </Text>
-                <Text style={text.faint} numberOfLines={1}>
-                  {ex.muscle} · {ex.equipment}
-                </Text>
-              </View>
-              <View style={styles.stepper}>
+            }}>
+            {exercises.map((ex, i) => (
+              <DraggableRow
+                key={ex.id}
+                id={ex.id}
+                last={i === exercises.length - 1}
+                onHeight={i === 0 ? setRowH : undefined}
+                head={
+                  <>
+                    <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={text.strong} numberOfLines={1}>
+                        {ex.name}
+                      </Text>
+                      <Text style={text.faint} numberOfLines={1}>
+                        {ex.muscle} · {ex.equipment}
+                      </Text>
+                    </View>
+                  </>
+                }>
+                <View style={styles.stepper}>
+                  <IconButton
+                    icon="remove"
+                    label={`One set less for ${ex.name}`}
+                    size={15}
+                    onPress={async () => {
+                      await setRoutineExerciseSets(db, ex.id, ex.target_sets - 1);
+                      await reload();
+                    }}
+                  />
+                  <Text style={styles.stepperValue}>{plural(ex.target_sets, 'set')}</Text>
+                  <IconButton
+                    icon="add"
+                    label={`One set more for ${ex.name}`}
+                    size={15}
+                    onPress={async () => {
+                      await setRoutineExerciseSets(db, ex.id, ex.target_sets + 1);
+                      await reload();
+                    }}
+                  />
+                </View>
                 <IconButton
-                  icon="remove"
-                  label={`One set less for ${ex.name}`}
-                  size={15}
+                  icon="close"
+                  label={`Remove ${ex.name}`}
+                  color={C.textFaint}
+                  size={16}
                   onPress={async () => {
-                    await setRoutineExerciseSets(db, ex.id, ex.target_sets - 1);
+                    await removeRoutineExercise(db, ex.id);
                     await reload();
                   }}
                 />
-                <Text style={styles.stepperValue}>{plural(ex.target_sets, 'set')}</Text>
-                <IconButton
-                  icon="add"
-                  label={`One set more for ${ex.name}`}
-                  size={15}
-                  onPress={async () => {
-                    await setRoutineExerciseSets(db, ex.id, ex.target_sets + 1);
-                    await reload();
-                  }}
-                />
-              </View>
-              <IconButton
-                icon="close"
-                label={`Remove ${ex.name}`}
-                color={C.textFaint}
-                size={16}
-                onPress={async () => {
-                  await removeRoutineExercise(db, ex.id);
-                  await reload();
-                }}
-              />
-            </ListRow>
-          ))}
+              </DraggableRow>
+            ))}
+          </DragSortProvider>
         </ListCard>
       )}
 
@@ -275,18 +277,53 @@ function RoutineEditor({
   );
 }
 
+/** A routine exercise you can hold and drag to a new place. */
+function DraggableRow({
+  id,
+  last,
+  head,
+  children,
+  onHeight,
+}: {
+  id: number;
+  last: boolean;
+  head: ReactNode;
+  children: ReactNode;
+  onHeight?: (h: number) => void;
+}) {
+  const box = useRef<React.ComponentRef<typeof Animated.View>>(null);
+  const drag = useDragItem(id, box as unknown as React.RefObject<View | null>);
+  return (
+    <Animated.View
+      ref={box}
+      onLayout={onHeight ? (e) => onHeight(Math.round(e.nativeEvent.layout.height)) : undefined}
+      style={[styles.dragRow, !last && styles.dragRowLine, drag.held && styles.dragRowHeld, drag.style]}>
+      <GestureDetector gesture={drag.gesture} touchAction="pan-y">
+        <View style={styles.dragHandle} accessibilityHint="Hold and drag to move the exercise">
+          {head}
+        </View>
+      </GestureDetector>
+      {children}
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
-  reorderBar: {
+  dragRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: S.sm,
-    padding: S.md,
-    marginTop: S.sm,
-    borderRadius: R.lg,
-    borderWidth: 1,
-    borderColor: C.accentLine,
-    backgroundColor: C.accentDim,
+    gap: S.md,
+    paddingHorizontal: S.md,
+    paddingVertical: 10,
+    backgroundColor: C.card,
+    shadowColor: '#000',
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    userSelect: 'none',
   },
+  dragRowLine: { borderBottomWidth: 1, borderBottomColor: C.border },
+  dragRowHeld: { borderRadius: R.md, borderWidth: 1, borderColor: C.accent },
+  dragHandle: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: S.md },
   page: { padding: S.lg, gap: 6, paddingBottom: S.xxl },
   pageDesktop: { paddingHorizontal: 40, paddingTop: S.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
   panel: { width: 360, borderLeftWidth: 1, borderLeftColor: C.border },
