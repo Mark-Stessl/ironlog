@@ -802,3 +802,32 @@ test('calendar: best streak and workout sets and volume per day', async () => {
   assert.equal(w.sets, 1);
   assert.equal(w.volume, 600);
 });
+
+test('overview: weekly totals for the progress chart', async () => {
+  const { weeklyTotals, weekStart } = await import('../src/lib/stats');
+  const now = new Date(2026, 10, 18, 15, 0).getTime(); // Wednesday
+  assert.equal(new Date(weekStart(now)).getDay(), 1); // Monday
+  assert.equal(new Date(weekStart(now)).getDate(), 16);
+  const at = (m: number, d: number, h = 18) => new Date(2026, m, d, h).getTime();
+  const w = (t: number, min: number, sets: number, volume: number) => ({
+    started_at: t,
+    finished_at: t + min * 60_000,
+    set_count: sets,
+    volume,
+  });
+  const weeks = weeklyTotals(
+    [w(at(10, 16), 60, 20, 5000), w(at(10, 18), 30, 10, 2500), w(at(10, 9), 45, 15, 4000), w(at(6, 1), 50, 9, 900)],
+    12,
+    now,
+  );
+  assert.equal(weeks.length, 12);
+  const last = weeks[11];
+  assert.equal(last.workouts, 2);
+  assert.equal(last.sets, 30);
+  assert.equal(last.volume, 7500);
+  assert.equal(last.time, 90 * 60_000);
+  assert.equal(weeks[10].workouts, 1); // Nov 9 week
+  assert.equal(weeks.reduce((s, x) => s + x.workouts, 0), 3); // July is outside the 12 weeks
+  // Weeks are 7 days apart in calendar terms, also across the end of daylight saving time (Oct 25).
+  for (let i = 1; i < weeks.length; i++) assert.equal(new Date(weeks[i].start).getDay(), 1);
+});

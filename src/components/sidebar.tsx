@@ -15,7 +15,7 @@ type PressState = PressableStateCallbackType & { hovered?: boolean };
 const NAV: {
   label: string;
   icon: IconName;
-  href: '/' | '/food' | '/recipes' | '/history' | '/profile';
+  href: '/' | '/food' | '/recipes' | '/overview' | '/profile';
   match: (p: string) => boolean;
 }[] = [
   {
@@ -39,7 +39,7 @@ const NAV: {
     href: '/recipes',
     match: (p) => p.startsWith('/recipes') || p.startsWith('/food/r:') || p.startsWith('/food/u:'),
   },
-  { label: 'History', icon: 'time-outline', href: '/history', match: (p) => p.startsWith('/history') },
+  { label: 'Overview', icon: 'grid-outline', href: '/overview', match: (p) => p.startsWith('/overview') },
   {
     label: 'Profile',
     icon: 'person-circle-outline',

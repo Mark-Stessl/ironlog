@@ -125,7 +125,10 @@ export function topRegions(regions: Partial<Record<Region, number>>, count = 6):
 export type Period = 'week' | 'month' | 'year';
 
 /** Start/end of the current period and of the one before it (local time). */
-export function periodRange(period: Period, now = new Date()): { from: number; to: number; prevFrom: number; label: string; prevLabel: string } {
+export function periodRange(
+  period: Period,
+  now = new Date(),
+): { from: number; to: number; prevFrom: number; label: string; prevLabel: string } {
   const d = new Date(now);
   d.setHours(0, 0, 0, 0);
   if (period === 'week') {
@@ -148,5 +151,54 @@ export function periodRange(period: Period, now = new Date()): { from: number; t
   const from = d.getTime();
   const prev = new Date(d);
   prev.setFullYear(prev.getFullYear() - 1);
-  return { from, to: now.getTime(), prevFrom: prev.getTime(), label: String(d.getFullYear()), prevLabel: String(prev.getFullYear()) };
+  return {
+    from,
+    to: now.getTime(),
+    prevFrom: prev.getTime(),
+    label: String(d.getFullYear()),
+    prevLabel: String(prev.getFullYear()),
+  };
+}
+
+export type WeekTotal = {
+  /** Monday 00:00 of the week (local time). */
+  start: number;
+  workouts: number;
+  sets: number;
+  /** kg × reps of ticked sets. */
+  volume: number;
+  /** Training time in ms. */
+  time: number;
+};
+
+/** Monday 00:00 (local) of the week a time falls in. */
+export function weekStart(t: number): number {
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime();
+}
+
+/** Totals per week for the last `weeks` weeks, oldest first, the current week last (empty weeks included). */
+export function weeklyTotals(
+  workouts: { started_at: number; finished_at: number | null; volume: number; set_count: number }[],
+  weeks = 12,
+  now = Date.now(),
+): WeekTotal[] {
+  const out: WeekTotal[] = [];
+  const d = new Date(weekStart(now));
+  for (let i = 0; i < weeks; i++) {
+    out.unshift({ start: d.getTime(), workouts: 0, sets: 0, volume: 0, time: 0 });
+    d.setDate(d.getDate() - 7); // calendar arithmetic, safe across daylight saving changes
+  }
+  const index = new Map(out.map((w, i) => [w.start, i]));
+  for (const w of workouts) {
+    const i = index.get(weekStart(w.started_at));
+    if (i == null) continue;
+    out[i].workouts++;
+    out[i].sets += w.set_count;
+    out[i].volume += w.volume;
+    out[i].time += Math.max(0, (w.finished_at ?? w.started_at) - w.started_at);
+  }
+  return out;
 }
