@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown, LinearTransition } from 'react-native-reanimated';
 
-import { CalorieRing, DetailBars, EnergySplit, MacroBars, MicroBars, WeekBars } from '@/components/nutrition-charts';
+import { CalorieRing, DetailBars, EnergySplit, MacroBars, MicroBars } from '@/components/nutrition-charts';
 import { FoodThumb, type ThumbData } from '@/components/food-thumb';
 import { RecipeCard } from '@/components/recipe-card';
 import { SoundToggle } from '@/components/sound-toggle';
@@ -16,7 +16,6 @@ import {
   addWater,
   allFoodItems,
   copyMeal,
-  dailyTotals,
   dayLog,
   dayMealPhotos,
   dayWater,
@@ -60,13 +59,11 @@ export default function FoodTab() {
   }, [params.day, today]);
 
   const [data, reload] = useFocusData(async (d) => {
-    const from = addDays(day, -6);
-    const [log, yesterday, water, settings, week, photos, saved] = await Promise.all([
+    const [log, yesterday, water, settings, photos, saved] = await Promise.all([
       dayLog(d, day),
       dayLog(d, addDays(day, -1)),
       dayWater(d, day),
       getGoalSettings(d),
-      dailyTotals(d, from, day),
       dayMealPhotos(d, day),
       savedMeals(d),
     ]);
@@ -86,7 +83,6 @@ export default function FoodTab() {
       water,
       settings,
       goals: goalsFrom(settings),
-      week,
       photos,
       thumbs,
       saved,
@@ -188,15 +184,6 @@ export default function FoodTab() {
     }
     reload();
   };
-
-  const week = Array.from({ length: 7 }, (_, i) => {
-    const k = addDays(day, i - 6);
-    return {
-      day: k,
-      label: new Date(dayStart(k)).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2),
-      kcal: data?.week.get(k)?.kcal ?? 0,
-    };
-  });
 
   const summary = goals ? (
     <Card style={styles.summary}>
@@ -384,10 +371,6 @@ export default function FoodTab() {
         <Text style={text.faint}>
           % of the EU daily reference. Packaged products often don't list vitamins, so these can read low.
         </Text>
-      </Card>
-      <SectionTitle title="Last 7 days" />
-      <Card>
-        <WeekBars days={week} goal={goals.kcal} selected={day} onSelect={setDay} />
       </Card>
     </View>
   ) : null;
