@@ -17,6 +17,8 @@ const FIELDS = [
   'serving_size',
   'serving_quantity',
   'nutriments',
+  'image_front_small_url',
+  'image_front_url',
 ].join(',');
 
 export type OffProduct = {
@@ -26,6 +28,8 @@ export type OffProduct = {
   per100: Nutrients;
   servingG: number | null;
   servingLabel: string | null;
+  /** Package photo on Open Food Facts (CC BY-SA). */
+  image: string | null;
   /** Nutrition facts missing (product exists but nobody entered them yet). */
   incomplete: boolean;
 };
@@ -40,6 +44,8 @@ type Raw = {
   serving_size?: string;
   serving_quantity?: number | string;
   nutriments?: Record<string, number | string | undefined>;
+  image_front_small_url?: string;
+  image_front_url?: string;
 };
 
 // Open Food Facts stores minerals and vitamins in grams per 100 g.
@@ -94,6 +100,7 @@ export function parseProduct(raw: Raw): OffProduct | null {
     per100,
     servingG: servingG && servingG > 0 ? servingG : null,
     servingLabel: raw.serving_size?.trim() || null,
+    image: (raw.image_front_url || raw.image_front_small_url || '').replace(/^http:/, 'https:') || null,
     incomplete: per100.kcal == null || per100.protein == null,
   };
 }

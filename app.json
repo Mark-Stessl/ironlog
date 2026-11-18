@@ -46,6 +46,13 @@
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ironlog lets you add photos of your meals and recipes.",
+          "cameraPermission": "Ironlog uses the camera to take photos of your meals and to scan barcodes."
+        }
       ]
     ],
     "experiments": {

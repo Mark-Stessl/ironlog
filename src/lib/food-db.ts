@@ -78,6 +78,7 @@ type FoodRow = {
   barcode: string | null;
   servings: string;
   nutrients: string;
+  image: string | null;
 };
 
 function foodItem(r: FoodRow, useCount = 0): FoodItem {
@@ -91,6 +92,8 @@ function foodItem(r: FoodRow, useCount = 0): FoodItem {
     per100: parse<Nutrients>(r.nutrients, {}),
     servings: parse<Serving[]>(r.servings, []),
     barcode: r.barcode ?? undefined,
+    image: r.image ?? undefined,
+    emoji: r.kind === 'product' ? '🛒' : '🍽️',
     useCount,
   };
 }
@@ -104,6 +107,7 @@ type RecipeRow = {
   steps: string;
   nutrients: string;
   total_g: number;
+  image: string | null;
 };
 
 function recipeItem(r: RecipeRow, useCount = 0): FoodItem {
@@ -126,6 +130,8 @@ function recipeItem(r: RecipeRow, useCount = 0): FoodItem {
       ingredients,
       steps: r.steps ? r.steps.split('\n').filter(Boolean) : [],
     },
+    image: r.image ?? undefined,
+    emoji: '🍲',
     useCount,
   };
 }
@@ -176,14 +182,16 @@ export async function foodByBarcode(db: SQLiteDatabase, barcode: string): Promis
 export async function saveProduct(db: SQLiteDatabase, p: OffProduct): Promise<string> {
   const servings: Serving[] = p.servingG ? [{ label: p.servingLabel ?? `1 serving`, g: p.servingG }] : [];
   await db.runAsync(
-    `INSERT INTO foods (kind, name, brand, barcode, servings, nutrients, created_at) VALUES ('product', ?, ?, ?, ?, ?, ?)
+    `INSERT INTO foods (kind, name, brand, barcode, servings, nutrients, image, created_at) VALUES ('product', ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(barcode) DO UPDATE SET name = excluded.name, brand = excluded.brand,
-       servings = excluded.servings, nutrients = excluded.nutrients`,
+       servings = excluded.servings, nutrients = excluded.nutrients,
+       image = CASE WHEN foods.image LIKE 'data:%' THEN foods.image ELSE COALESCE(excluded.image, foods.image) END`,
     p.name,
     p.brand,
     p.barcode,
     JSON.stringify(servings),
     JSON.stringify(p.per100),
+    p.image ?? null,
     Date.now(),
   );
   const row = await db.getFirstAsync<{ id: number }>('SELECT id FROM foods WHERE barcode = ?', p.barcode);
@@ -196,18 +204,21 @@ export type CustomFood = {
   barcode: string | null;
   per100: Nutrients;
   serving: Serving | null;
+  /** Your own photo as a data URI. */
+  image?: string | null;
 };
 
 export async function createCustomFood(db: SQLiteDatabase, f: CustomFood): Promise<string> {
   const r = await db.runAsync(
-    `INSERT INTO foods (kind, name, brand, barcode, servings, nutrients, created_at) VALUES ('custom', ?, ?, ?, ?, ?, ?)
+    `INSERT INTO foods (kind, name, brand, barcode, servings, nutrients, image, created_at) VALUES ('custom', ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(barcode) DO UPDATE SET kind = 'custom', name = excluded.name, brand = excluded.brand,
-       servings = excluded.servings, nutrients = excluded.nutrients`,
+       servings = excluded.servings, nutrients = excluded.nutrients, image = COALESCE(excluded.image, foods.image)`,
     f.name.trim(),
     f.brand.trim(),
     f.barcode?.trim() || null,
     JSON.stringify(f.serving ? [f.serving] : []),
     JSON.stringify(f.per100),
+    f.image ?? null,
     Date.now(),
   );
   if (f.barcode?.trim()) {
@@ -228,13 +239,14 @@ export type NewRecipe = {
   servings: number;
   ingredients: { item: FoodItem; g: number }[];
   steps: string;
+  image?: string | null;
 };
 
 /** Saves your own recipe. Nutrition is calculated from the ingredients. */
 export async function createRecipe(db: SQLiteDatabase, r: NewRecipe): Promise<string> {
   const total = totalOf(r.ingredients.map((i) => ({ per100: i.item.per100, g: i.g })));
   const res = await db.runAsync(
-    'INSERT INTO user_recipes (name, meal, servings, ingredients, steps, nutrients, total_g, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO user_recipes (name, meal, servings, ingredients, steps, nutrients, total_g, image, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     r.name.trim(),
     r.meal,
     Math.max(1, Math.round(r.servings)),
@@ -242,9 +254,66 @@ export async function createRecipe(db: SQLiteDatabase, r: NewRecipe): Promise<st
     r.steps.trim(),
     JSON.stringify(per100Of(total.n, total.g)),
     total.g,
+    r.image ?? null,
     Date.now(),
   );
   return `u:${res.lastInsertRowId}`;
+}
+
+/** Sets or removes your own photo on a product, own food or own recipe. */
+export async function setFoodImage(db: SQLiteDatabase, ref: string, image: string | null): Promise<void> {
+  const id = Number(ref.slice(2));
+  if (ref.startsWith('p:')) await db.runAsync('UPDATE foods SET image = ? WHERE id = ?', image, id);
+  if (ref.startsWith('u:')) await db.runAsync('UPDATE user_recipes SET image = ? WHERE id = ?', image, id);
+}
+
+export type Thumb = { image?: string; emoji?: string };
+
+/** Photo or emoji for each logged ref (for the day's list). */
+export async function thumbsFor(db: SQLiteDatabase, refs: string[]): Promise<Map<string, Thumb>> {
+  const out = new Map<string, Thumb>();
+  const ids = (prefix: string) => [...new Set(refs.filter((r) => r.startsWith(prefix)).map((r) => Number(r.slice(2))))];
+  const p = ids('p:');
+  if (p.length) {
+    const rows = await db.getAllAsync<{ id: number; kind: string; image: string | null }>(
+      `SELECT id, kind, image FROM foods WHERE id IN (${p.map(() => '?').join(',')})`,
+      ...p,
+    );
+    for (const r of rows) out.set(`p:${r.id}`, { image: r.image ?? undefined, emoji: r.kind === 'product' ? '🛒' : '🍽️' });
+  }
+  const u = ids('u:');
+  if (u.length) {
+    const rows = await db.getAllAsync<{ id: number; image: string | null }>(
+      `SELECT id, image FROM user_recipes WHERE id IN (${u.map(() => '?').join(',')})`,
+      ...u,
+    );
+    for (const r of rows) out.set(`u:${r.id}`, { image: r.image ?? undefined, emoji: '🍲' });
+  }
+  for (const ref of refs) {
+    if (out.has(ref)) continue;
+    if (ref.startsWith('f:')) out.set(ref, { emoji: builtinFood(ref.slice(2))?.emoji });
+    else if (ref.startsWith('b:')) out.set(ref, { emoji: blsFood(ref.slice(2))?.emoji });
+  }
+  return out;
+}
+
+// ── Meal photos ─────────────────────────────────────────────────────────
+
+export async function dayMealPhotos(db: SQLiteDatabase, day: string): Promise<Partial<Record<Meal, string>>> {
+  const rows = await db.getAllAsync<{ meal: Meal; image: string }>('SELECT meal, image FROM meal_photos WHERE day = ?', day);
+  return Object.fromEntries(rows.map((r) => [r.meal, r.image]));
+}
+
+export async function setMealPhoto(db: SQLiteDatabase, day: string, meal: Meal, image: string | null): Promise<void> {
+  if (image)
+    await db.runAsync(
+      'INSERT INTO meal_photos (day, meal, image, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(day, meal) DO UPDATE SET image = excluded.image',
+      day,
+      meal,
+      image,
+      Date.now(),
+    );
+  else await db.runAsync('DELETE FROM meal_photos WHERE day = ? AND meal = ?', day, meal);
 }
 
 // ── Food log ────────────────────────────────────────────────────────────

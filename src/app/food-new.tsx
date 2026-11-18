@@ -4,6 +4,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { PhotoField } from '@/components/photo-field';
 import { Button, Card, Page, SectionTitle, text } from '@/components/ui';
 import { notify } from '@/lib/dialog';
 import { createCustomFood } from '@/lib/food-db';
@@ -32,6 +33,7 @@ export default function NewFoodScreen() {
   const [servingG, setServingG] = useState('');
   const [values, setValues] = useState<Partial<Record<NutrientKey, string>>>({});
   const [more, setMore] = useState(false);
+  const [photo, setPhoto] = useState<string | null>(null);
 
   const per100: Nutrients = {};
   for (const [k, v] of Object.entries(values) as [NutrientKey, string][]) {
@@ -51,6 +53,7 @@ export default function NewFoodScreen() {
       barcode: barcode.trim() || null,
       per100: { ...per100, kcal: kcal ?? 0 },
       serving: g ? { label: servingLabel.trim() || '1 serving', g } : null,
+      image: photo,
     });
     router.replace({ pathname: '/food/[ref]', params: { ref, meal: p.meal ?? '', day: p.day ?? '' } });
   };
@@ -96,6 +99,8 @@ export default function NewFoodScreen() {
           <Input label="Grams per serving" value={servingG} onChange={setServingG} placeholder="200" numeric style={{ flex: 1 }} />
         </View>
       </Card>
+
+      <PhotoField value={photo} onChange={setPhoto} />
 
       <SectionTitle title="Per 100 g" />
       <Card style={{ paddingVertical: 4 }}>{MAIN.map((m, i) => field(m.key, m.indent, i === MAIN.length - 1))}</Card>

@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import {
@@ -13,6 +13,7 @@ import {
   MicroBars,
   WeekBars,
 } from '@/components/nutrition-charts';
+import { FoodThumb, type ThumbData } from '@/components/food-thumb';
 import { Card, IconButton, ListCard, ListRow, Page, SectionTitle, text } from '@/components/ui';
 import { WaterCard } from '@/components/water-card';
 import { addDays, dayKey, dayStart, relativeDay } from '@/lib/calendar';
@@ -21,13 +22,17 @@ import {
   copyMeal,
   dailyTotals,
   dayLog,
+  dayMealPhotos,
   dayWater,
   getGoalSettings,
   goalsFrom,
+  setMealPhoto,
+  thumbsFor,
   undoWater,
   type LogEntry,
 } from '@/lib/food-db';
 import { haptic } from '@/lib/haptics';
+import { pickPhoto } from '@/lib/photo';
 import { sum } from '@/lib/nutrition';
 import { MEALS, type Meal } from '@/lib/recipes';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
@@ -41,20 +46,33 @@ export default function FoodTab() {
 
   const [data, reload] = useFocusData(async (d) => {
     const from = addDays(day, -6);
-    const [log, yesterday, water, settings, week] = await Promise.all([
+    const [log, yesterday, water, settings, week, photos] = await Promise.all([
       dayLog(d, day),
       dayLog(d, addDays(day, -1)),
       dayWater(d, day),
       getGoalSettings(d),
       dailyTotals(d, from, day),
+      dayMealPhotos(d, day),
     ]);
-    return { log, yesterday, water, settings, goals: goalsFrom(settings), week };
+    const thumbs = await thumbsFor(
+      d,
+      log.map((e) => e.ref),
+    );
+    return { log, yesterday, water, settings, goals: goalsFrom(settings), week, photos, thumbs };
   }, day);
 
   const log = data?.log ?? [];
   const goals = data?.goals;
   const total = sum(log.map((e) => e.n));
   const eaten = total.kcal ?? 0;
+
+  const addMealPhoto = async (meal: Meal) => {
+    const img = await pickPhoto();
+    if (!img) return;
+    await setMealPhoto(db, day, meal, img);
+    haptic.tap();
+    reload();
+  };
 
   const openAdd = (meal: Meal) => router.push({ pathname: '/food-add', params: { meal, day } });
 
@@ -100,12 +118,47 @@ export default function FoodTab() {
           <Animated.View key={m.key} entering={FadeInDown.delay(mi * 40).duration(260)}>
             <SectionTitle
               title={entries.length ? `${m.label} · ${Math.round(kcal)} kcal` : m.label}
-              right={<IconButton icon="add" label={`Add to ${m.label}`} onPress={() => openAdd(m.key)} color={C.accent} />}
+              right={
+                <View style={{ flexDirection: 'row' }}>
+                  <IconButton
+                    icon="camera-outline"
+                    label={`Photo of ${m.label.toLowerCase()}`}
+                    onPress={() => addMealPhoto(m.key)}
+                  />
+                  <IconButton icon="add" label={`Add to ${m.label}`} onPress={() => openAdd(m.key)} color={C.accent} />
+                </View>
+              }
             />
+            {data?.photos[m.key] ? (
+              <Animated.View entering={FadeIn.duration(300)} style={styles.mealPhotoWrap}>
+                <Image
+                  source={{ uri: data.photos[m.key] }}
+                  style={styles.mealPhoto}
+                  resizeMode="cover"
+                  accessibilityLabel={`Your photo of ${m.label.toLowerCase()}`}
+                />
+                <Pressable
+                  onPress={async () => {
+                    await setMealPhoto(db, day, m.key, null);
+                    reload();
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove photo of ${m.label.toLowerCase()}`}
+                  style={styles.mealPhotoRemove}>
+                  <Ionicons name="close" size={14} color="#fff" />
+                </Pressable>
+              </Animated.View>
+            ) : null}
             {entries.length ? (
               <ListCard>
                 {entries.map((e, i) => (
-                  <EntryRow key={e.id} entry={e} last={i === entries.length - 1} />
+                  <EntryRow
+                    key={e.id}
+                    entry={e}
+                    thumb={{ ref: e.ref, ...data?.thumbs.get(e.ref) }}
+                    last={i === entries.length - 1}
+                  />
                 ))}
               </ListCard>
             ) : (
@@ -225,11 +278,12 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EntryRow({ entry: e, last }: { entry: LogEntry; last: boolean }) {
+function EntryRow({ entry: e, thumb, last }: { entry: LogEntry; thumb: ThumbData; last: boolean }) {
   return (
     <ListRow
       last={last}
       onPress={() => router.push({ pathname: '/food/[ref]', params: { ref: e.ref, entry: String(e.id) } })}>
+      <FoodThumb item={thumb} size={38} radius={10} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={text.strong} numberOfLines={1}>
           {e.name}
@@ -281,5 +335,18 @@ const styles = StyleSheet.create({
     borderColor: C.accentLine,
   },
   copyLabel: { color: C.text, fontFamily: F.semi, fontSize: 12 },
+  mealPhotoWrap: { marginBottom: S.sm },
+  mealPhoto: { width: '100%', aspectRatio: 16 / 9, maxHeight: 220, borderRadius: R.lg, backgroundColor: C.cardHi },
+  mealPhotoRemove: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   kcal: { color: C.text, fontFamily: F.semi, fontSize: 13, fontVariant: ['tabular-nums'] },
 });

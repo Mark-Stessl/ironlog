@@ -142,7 +142,7 @@ FOODS = [
     ('yogurt-full', 'bls:M141300', 'Plain yogurt 3.5%', 'Joghurt Naturjoghurt griechisch', 'Dairy', [('1 cup', 150)]),
     ('yogurt', 'bls:M141200', 'Plain yogurt 1.5%', 'Joghurt Naturjoghurt', 'Dairy', [('1 cup', 150)]),
     ('kefir', 'bls:M130200', 'Kefir', 'Kefir Buttermilch', 'Dairy', [('1 glass', 250)]),
-    ('cottage-cheese', 'bls:M711100', 'Cottage cheese', 'Hüttenkäse Cottage Cheese Topfen', 'Dairy', [('1 portion', 125)]),
+    ('cottage-cheese', 'bls:M711100', 'Cottage cheese', 'Hüttenkäse Cottage Cheese körniger Frischkäse', 'Dairy', [('1 portion', 125)]),
     ('mozzarella', 'bls:M032100', 'Mozzarella', 'Mozzarella Käse', 'Dairy', [('1/2 ball', 60)]),
     ('cheddar', 'bls:M303600', 'Cheddar', 'Cheddar Käse', 'Dairy', [('1 slice', 28)]),
     ('gouda', 'bls:M402600', 'Gouda', 'Gouda Käse', 'Dairy', [('1 slice', 25)]),

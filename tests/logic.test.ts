@@ -454,6 +454,7 @@ test('food data: BLS foods and recipes are complete and plausible', async () => 
   const { kcalFromMacros } = await import('../src/lib/nutrition');
   assert.ok(BUILTIN_FOODS.length >= 140);
   assert.ok(BUILTIN_FOODS.every((f) => f.source === 'bls')); // German national database only
+  assert.deepEqual(BUILTIN_FOODS.filter((f) => !f.emoji).map((f) => f.name), []); // every everyday food has an emoji
   for (const f of BUILTIN_FOODS) {
     for (const k of ['kcal', 'protein', 'carbs', 'fat'] as const) assert.ok(f.per100[k] != null, `${f.name} ${k}`);
     assert.ok(f.servings.length > 0 && f.servings[0].g > 0, `${f.name} serving`);
@@ -534,7 +535,12 @@ test('open food facts: parsing per-100 g values and units', async () => {
   assert.equal(p.per100.calcium, 120); // g -> mg
   assert.equal(p.per100.vitD, 0.1); // g -> µg
   assert.equal(p.servingG, 150);
+  assert.equal(p.image, null);
   assert.equal(p.incomplete, false);
+  assert.equal(
+    parseProduct({ code: '1234567890123', product_name: 'X', image_front_small_url: 'http://images.openfoodfacts.org/a.jpg', nutriments: {} })!.image,
+    'https://images.openfoodfacts.org/a.jpg',
+  );
   assert.equal(parseProduct({ code: '1', product_name: '' }), null);
   assert.equal(parseProduct({ code: '4000000000000', product_name: 'X', nutriments: {} })!.incomplete, true);
   assert.ok(isBarcode('9001234567890') && isBarcode('40084107') && !isBarcode('12ab') && !isBarcode('123'));
@@ -570,12 +576,25 @@ test('database: food log, water, own foods, products and recipes', async () => {
   assert.equal(await fdb.dayWater(db, '2026-11-18'), 250);
 
   // Scanned product: saved once, updated on the second scan.
-  const product = { barcode: '9001234567890', name: 'Skyr', brand: 'Milfina', per100: { kcal: 63, protein: 11 }, servingG: 150, servingLabel: '1 cup', incomplete: false };
+  const product = { barcode: '9001234567890', name: 'Skyr', brand: 'Milfina', per100: { kcal: 63, protein: 11 }, servingG: 150, servingLabel: '1 cup', image: 'https://images.openfoodfacts.org/x.jpg', incomplete: false };
   const ref = await fdb.saveProduct(db, product);
   assert.equal(await fdb.saveProduct(db, { ...product, name: 'Skyr Natur' }), ref);
   const found = (await fdb.foodByBarcode(db, '9001234567890'))!;
   assert.equal(found.name, 'Skyr Natur');
   assert.equal(found.servings[0].g, 150);
+  assert.equal(found.image, 'https://images.openfoodfacts.org/x.jpg');
+  // Your own photo of a product is kept when it is looked up again.
+  await fdb.setFoodImage(db, ref, 'data:image/jpeg;base64,AAA');
+  await fdb.saveProduct(db, product);
+  assert.equal((await fdb.getFoodItem(db, ref))!.image, 'data:image/jpeg;base64,AAA');
+  const thumbs = await fdb.thumbsFor(db, [ref, 'f:banana', 'b:F110100', 'r:chili']);
+  assert.equal(thumbs.get(ref)!.image, 'data:image/jpeg;base64,AAA');
+  assert.equal(thumbs.get('f:banana')!.emoji, '🍌');
+  await fdb.setMealPhoto(db, '2026-11-18', 'lunch', 'data:image/jpeg;base64,BBB');
+  await fdb.setMealPhoto(db, '2026-11-18', 'lunch', 'data:image/jpeg;base64,CCC');
+  assert.deepEqual(await fdb.dayMealPhotos(db, '2026-11-18'), { lunch: 'data:image/jpeg;base64,CCC' });
+  await fdb.setMealPhoto(db, '2026-11-18', 'lunch', null);
+  assert.deepEqual(await fdb.dayMealPhotos(db, '2026-11-18'), {});
 
   const own = await fdb.createCustomFood(db, { name: 'Mum’s Gulasch', brand: '', barcode: null, per100: { kcal: 150, protein: 12, carbs: 5, fat: 9 }, serving: { label: '1 plate', g: 350 } });
   const recipe = await fdb.createRecipe(db, {
@@ -618,6 +637,7 @@ test('BLS 4.0: whole database searchable, Austrian words, everyday foods first, 
   assert.equal(top('semmel'), 'Bread roll');
   assert.equal(top('banane'), 'Banana');
   assert.equal(top('leberkäse'), 'Leberkäse');
+  assert.equal(top('ei'), 'Egg');
   // Long-tail foods are found by their German name and by Austrian words.
   assert.ok(searchFoods('kaiserschmarrn', all).length > 0 || searchFoods('schmarrn', all).length > 0);
   assert.ok(searchFoods('marillenknödel', all).length + searchFoods('marille', all).length > 1);
@@ -631,4 +651,15 @@ test('BLS 4.0: whole database searchable, Austrian words, everyday foods first, 
   const item = (await fdb.getFoodItem(db, bls[0].ref))!;
   assert.equal(item.name, bls[0].name);
   assert.equal(item.source, 'bls');
+});
+
+test('recipe photos: every built-in recipe has a bundled photo with credit', async () => {
+  const fs = await import('node:fs');
+  const { RECIPES } = await import('../src/lib/recipes');
+  const credits = fs.readFileSync('src/lib/recipe-photos.ts', 'utf8');
+  for (const r of RECIPES) {
+    assert.ok(fs.existsSync(`assets/recipes/${r.key}.jpg`), `photo for ${r.key}`);
+    assert.ok(credits.includes(`'${r.key}': { source: require('../../assets/recipes/${r.key}.jpg'), author:`), `credit for ${r.key}`);
+    assert.ok(fs.statSync(`assets/recipes/${r.key}.jpg`).size < 120_000, `${r.key} small enough`);
+  }
 });

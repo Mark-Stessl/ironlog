@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type PressableStateCallbackType } from 'react-native';
 import Animated, { ZoomIn } from 'react-native-reanimated';
 
+import { FoodThumb } from '@/components/food-thumb';
 import type { IconName } from '@/components/ui';
 import type { FoodItem } from '@/lib/foods';
 import { C, F, R, S } from '@/lib/theme';
@@ -38,20 +39,18 @@ export function FoodRow({
   onQuickAdd?: () => Promise<void> | void;
 }) {
   const [added, setAdded] = useState(0);
-  const src = SOURCE[item.source];
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       style={(s: PressState) => [styles.row, (s.hovered || s.pressed) && { backgroundColor: C.cardHi }]}>
-      <View style={[styles.icon, item.recipe && styles.iconRecipe]}>
-        <Ionicons name={src.icon} size={15} color={item.recipe ? C.accent : C.textDim} />
-      </View>
+      <FoodThumb item={item} size={44} radius={11} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={styles.name} numberOfLines={1}>
           {item.name}
         </Text>
         <Text style={styles.sub} numberOfLines={1}>
+          {item.recipe ? `${item.source === 'my-recipe' ? 'My recipe' : 'Recipe'} · ` : ''}
           {servingLine(item)}
         </Text>
       </View>

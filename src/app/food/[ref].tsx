@@ -3,10 +3,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { SOURCE } from '@/components/food-row';
+import { FoodThumb, photoSource } from '@/components/food-thumb';
 import { MACRO_COLOR } from '@/components/nutrition-charts';
 import { Button, Card, Chip, Empty, HeaderButton, ListCard, ListRow, Page, SectionTitle, text } from '@/components/ui';
 import { dayKey } from '@/lib/calendar';
@@ -18,11 +19,14 @@ import {
   getGoals,
   getLogEntry,
   logFood,
+  setFoodImage,
   updateLogAmount,
 } from '@/lib/food-db';
 import { amountLabel, nutrientsFor, type FoodItem, type Serving } from '@/lib/foods';
 import { parseNum } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { pickPhoto } from '@/lib/photo';
+import { RECIPE_PHOTOS } from '@/lib/recipe-photos';
 import { fmtNutrient, MICROS, NUTRIENTS, type Goals, type NutrientKey } from '@/lib/nutrition';
 import { MEALS, mealForTime, mealLabel, type Meal } from '@/lib/recipes';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
@@ -47,7 +51,7 @@ const TABLE: { key: NutrientKey; indent?: boolean }[] = [
 
 export default function FoodScreen() {
   const p = useLocalSearchParams<{ ref: string; meal?: string; day?: string; entry?: string }>();
-  const [data] = useFocusData(
+  const [data, reload] = useFocusData(
     async (db) => ({
       item: await getFoodItem(db, p.ref),
       goals: await getGoals(db),
@@ -59,6 +63,7 @@ export default function FoodScreen() {
   if (!data.item) return <Empty icon="alert-circle-outline" title="Food not found" />;
   return (
     <FoodDetail
+      reload={reload}
       item={data.item}
       goals={data.goals}
       entry={data.entry}
@@ -71,6 +76,7 @@ export default function FoodScreen() {
 type Unit = { kind: 'serving'; serving: Serving } | { kind: 'g' };
 
 function FoodDetail({
+  reload,
   item,
   goals,
   entry,
@@ -80,6 +86,7 @@ function FoodDetail({
   item: FoodItem;
   goals: Goals;
   entry: Awaited<ReturnType<typeof getLogEntry>>;
+  reload: () => void;
   meal: Meal;
   day: string;
 }) {
@@ -145,6 +152,19 @@ function FoodDetail({
   const stepGrams = (d: number) => setGramText(String(Math.max(5, Math.round(((parseNum(gramText) ?? 0) + d) / 5) * 5)));
   const step = (d: number) => setCountText(String(Math.max(0.5, Math.round((count + d) * 2) / 2)));
   const src = SOURCE[item.source];
+  const photo = photoSource(item);
+  // Open Food Facts package photos are shown whole on a light background instead of cropped.
+  const isPackShot = !!item.image?.startsWith('http');
+  const recipePhoto = item.ref.startsWith('r:') ? RECIPE_PHOTOS[item.ref.slice(2)] : undefined;
+  const credit = recipePhoto ? (
+    <Pressable onPress={() => Linking.openURL(recipePhoto.url)} accessibilityRole="link">
+      <Text style={styles.credit}>
+        Photo: {recipePhoto.author} on <Text style={{ textDecorationLine: 'underline' }}>Unsplash</Text>
+      </Text>
+    </Pressable>
+  ) : item.image?.startsWith('http') ? (
+    <Text style={styles.credit}>Photo: Open Food Facts (CC BY-SA)</Text>
+  ) : null;
   const own = item.source === 'custom' || item.source === 'my-recipe' || item.source === 'product';
 
   const amount = (
@@ -314,18 +334,59 @@ function FoodDetail({
             ) : null,
         }}
       />
-      <Animated.View entering={FadeIn.duration(250)} style={{ gap: 4 }}>
-        <View style={styles.badges}>
-          <View style={styles.badge}>
-            <Ionicons name={src.icon} size={12} color={C.textDim} />
-            <Text style={styles.badgeText}>{SOURCE_NAME[item.source] ?? src.label}</Text>
+      {photo ? (
+        <Animated.View entering={FadeIn.duration(300)} style={{ gap: 6 }}>
+          <Image
+            source={photo}
+            style={[styles.photo, desktop && styles.photoWide, isPackShot && styles.packShot]}
+            resizeMode={isPackShot ? 'contain' : 'cover'}
+          />
+          {credit}
+        </Animated.View>
+      ) : null}
+      <Animated.View entering={FadeIn.duration(250)} style={styles.titleRow}>
+        {!photo ? <FoodThumb item={item} size={64} radius={16} /> : null}
+        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+          <View style={styles.badges}>
+            <View style={styles.badge}>
+              <Ionicons name={src.icon} size={12} color={C.textDim} />
+              <Text style={styles.badgeText}>{SOURCE_NAME[item.source] ?? src.label}</Text>
+            </View>
+            {item.barcode ? <Text style={text.faint}>{item.barcode}</Text> : null}
           </View>
-          {item.barcode ? <Text style={text.faint}>{item.barcode}</Text> : null}
+          <Text style={text.title}>{item.name}</Text>
+          {item.brand ? <Text style={text.dim}>{item.brand}</Text> : null}
+          {item.altName && item.altName !== item.name ? <Text style={text.dim}>{item.altName}</Text> : null}
         </View>
-        <Text style={text.title}>{item.name}</Text>
-        {item.brand ? <Text style={text.dim}>{item.brand}</Text> : null}
-        {item.altName && item.altName !== item.name ? <Text style={text.dim}>{item.altName}</Text> : null}
       </Animated.View>
+      {own ? (
+        <View style={styles.photoActions}>
+          <Button
+            small
+            icon="camera-outline"
+            label={item.image ? 'Change photo' : 'Add photo'}
+            onPress={async () => {
+              const img = await pickPhoto();
+              if (!img) return;
+              await setFoodImage(db, item.ref, img);
+              haptic.tap();
+              reload();
+            }}
+          />
+          {item.image?.startsWith('data:') ? (
+            <Button
+              small
+              kind="ghost"
+              icon="trash-outline"
+              label="Remove photo"
+              onPress={async () => {
+                await setFoodImage(db, item.ref, null);
+                reload();
+              }}
+            />
+          ) : null}
+        </View>
+      ) : null}
 
       {desktop ? (
         <View style={styles.columns}>
@@ -358,6 +419,12 @@ function FoodDetail({
 }
 
 const styles = StyleSheet.create({
+  photo: { width: '100%', aspectRatio: 4 / 3, maxHeight: 300, borderRadius: R.lg, backgroundColor: C.cardHi },
+  photoWide: { aspectRatio: 16 / 7, maxHeight: 320 },
+  packShot: { backgroundColor: '#F4F6F7' },
+  credit: { color: C.textFaint, fontFamily: F.regular, fontSize: 11 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
+  photoActions: { flexDirection: 'row', gap: S.sm },
   badges: { flexDirection: 'row', alignItems: 'center', gap: S.sm, marginTop: S.xs },
   badge: {
     flexDirection: 'row',

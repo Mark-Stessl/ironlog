@@ -39,6 +39,7 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **26 recipes** for breakfast, lunch, dinner and snacks; their nutrition is calculated from the ingredients
 - **Supermarket products** from Open Food Facts: scan the barcode with the camera (on-device decoding with ZXing, works in iPhone Safari) or search by name. Free, no account, no key; products are kept on the phone after the first lookup
 - **Your own foods** typed in from the label, and **your own recipes** with nutrition calculated automatically
+- **Pictures**: a photo for every built-in recipe, package photos for supermarket products, an emoji for every food, and your own photos of meals, foods and recipes (taken or picked from the gallery, kept only on the phone)
 - **Goals**: EU reference intakes by default; with age, height, weight and activity, calories come from the Henry equation × EFSA activity level, protein from g per kg body weight (ISSN 1.4–2.0), fat 30 % of energy, water from EFSA (2.0 L men / 1.6 L women from drinks); every number can be overridden
 - Quick add, "same as yesterday" for a whole meal, edit or remove entries, browse earlier days
 - **Week strip and streak** on the home screen
@@ -104,6 +105,9 @@ src/lib/bls-data.json    BLS 4.0 foods (generated)
 src/lib/food-db.ts       food log, water, own foods and recipes
 src/lib/off.ts           Open Food Facts (barcode lookup and search)
 src/lib/recipes.ts       built-in recipes
+src/lib/recipe-photos.ts recipe photos (assets/recipes) and their credits
+src/lib/food-emoji.ts    emoji per food and food group
+src/lib/photo.ts         take or pick a photo, resized and kept on the phone
 tests/logic.test.ts      tests for search, database and nutrition logic
 ```
 
@@ -127,4 +131,5 @@ The illustrations are loaded from RepDB's own site and are not part of this repo
 Food data: Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0 — Deutsche Nährstoffdatenbank. Karlsruhe. DOI: [10.25826/Data20251217-134202-0](https://doi.org/10.25826/Data20251217-134202-0), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Converted (16 of 138 nutrients, values below the detection limit counted as 0, Austrian search words added) into `src/lib/food-data.json` and `src/lib/bls-data.json` by `scripts/build-food-data.py`.
 Product data from [Open Food Facts](https://world.openfoodfacts.org), available under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/).
 Reference values: EU Regulation 1169/2011 Annex XIII; EFSA dietary reference values (energy 2013; carbohydrates, fibre, fats and water 2010); ISSN position stand on protein and exercise (2017).
+Recipe photos from [Unsplash](https://unsplash.com/license) (free to use); each recipe credits its photographer. Product photos from Open Food Facts, licensed [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), shown with a credit.
 Barcode decoding: [ZXing](https://github.com/zxing-js/library) (Apache 2.0).

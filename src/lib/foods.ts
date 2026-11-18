@@ -3,6 +3,7 @@
 
 import blsData from './bls-data.json';
 import foodData from './food-data.json';
+import { blsEmoji, FOOD_EMOJI } from './food-emoji';
 import { per100Of, scale, sum, type Nutrients } from './nutrition';
 import { RECIPES, type Meal, type Recipe } from './recipes';
 import { editDistance, normalize } from './search';
@@ -38,6 +39,10 @@ export type FoodItem = {
   /** The first one is the default amount. */
   servings: Serving[];
   barcode?: string;
+  /** Emoji shown when there is no photo. */
+  emoji?: string;
+  /** Photo: product image URL or your own photo (data URI). Built-in recipes use bundled photos. */
+  image?: string;
   recipe?: RecipeInfo;
   useCount: number;
 };
@@ -62,6 +67,7 @@ export const BUILTIN_FOODS: FoodItem[] = (foodData as RawFood[]).map((f) => ({
   words: f.words,
   per100: f.n,
   servings: f.servings,
+  emoji: FOOD_EMOJI[f.key],
   everyday: true,
   useCount: 0,
 }));
@@ -132,6 +138,7 @@ export function allBlsFoods(): FoodItem[] {
       words: `${r[2]} ${r[3]}`,
       per100,
       servings: [],
+      emoji: blsEmoji(r[0]),
       useCount: 0,
     };
   });
@@ -232,7 +239,9 @@ function indexOf(items: FoodItem[]): Entry[] {
 }
 
 function tokenScore(t: string, e: Entry, fuzzy: boolean): number {
-  if (e.nameWords[0]?.startsWith(t)) return 100;
+  // A whole word that matches exactly ("ei" = Ei) beats a word that only starts with it (Einkorn).
+  if (e.nameWords[0] === t || e.words.includes(t)) return 100;
+  if (e.nameWords[0]?.startsWith(t)) return 96;
   if (e.nameWords.some((w) => w.startsWith(t))) return 80;
   if (e.phrases.some((p) => p.startsWith(t))) return 78;
   if (e.category.startsWith(t) || e.brand.some((w) => w.startsWith(t))) return 75;

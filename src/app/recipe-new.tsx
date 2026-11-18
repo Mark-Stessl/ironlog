@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { FoodRow } from '@/components/food-row';
+import { PhotoField } from '@/components/photo-field';
 import { MACRO_COLOR } from '@/components/nutrition-charts';
 import { Button, Card, Chip, IconButton, Page, SectionTitle, text } from '@/components/ui';
 import { notify } from '@/lib/dialog';
@@ -29,6 +30,7 @@ export default function NewRecipeScreen() {
   const [servings, setServings] = useState(1);
   const [parts, setParts] = useState<Part[]>([]);
   const [steps, setSteps] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [online, setOnline] = useState<OffProduct[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,6 +71,7 @@ export default function NewRecipeScreen() {
       meal,
       servings,
       steps,
+      image: photo,
       ingredients: parts.map((p, i) => ({ item: p.item, g: grams[i] })).filter((p) => p.g > 0),
     });
     router.replace({ pathname: '/food/[ref]', params: { ref, meal, day: params.day ?? '' } });
@@ -86,6 +89,7 @@ export default function NewRecipeScreen() {
         accessibilityLabel="Recipe name"
         style={styles.name}
       />
+      <PhotoField value={photo} onChange={setPhoto} />
       <View style={styles.row}>
         {MEALS.map((m) => (
           <Chip key={m.key} label={m.label} active={meal === m.key} onPress={() => setMeal(m.key)} />

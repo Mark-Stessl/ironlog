@@ -176,7 +176,24 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       await db.execAsync('PRAGMA user_version = 4');
     });
   }
-  // Future schema changes: add `if (version < 5) { ... }` blocks here.
+  if (version < 5) {
+    // Photos: product images, your own photos of foods, recipes and meals.
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE foods ADD COLUMN image TEXT;
+        ALTER TABLE user_recipes ADD COLUMN image TEXT;
+        CREATE TABLE meal_photos (
+          day TEXT NOT NULL,
+          meal TEXT NOT NULL,
+          image TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY (day, meal)
+        );
+        PRAGMA user_version = 5;
+      `);
+    });
+  }
+  // Future schema changes: add `if (version < 6) { ... }` blocks here.
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
