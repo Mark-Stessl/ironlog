@@ -142,6 +142,40 @@ export default function ProfileTab() {
         </Animated.View>
       ) : null}
 
+      {empty ? (
+        <Empty
+          icon="stats-chart-outline"
+          title={`No workouts in ${periodName} yet`}
+          hint="Finish a workout and your muscle distribution shows up here."
+        />
+      ) : now && before ? (
+        <View style={[{ gap: S.md }, desktop && styles.columns]}>
+          <View style={desktop ? styles.column : undefined}>
+            <SectionTitle title="Muscle distribution" />
+            <Card style={styles.chartCard}>
+              <RadarChart axes={GROUPS} values={now.groups} compare={before.groups} size={desktop ? 340 : 300} />
+              <View style={styles.legend}>
+                <View style={styles.legendItem}>
+                  <View style={[styles.swatch, { backgroundColor: C.accent }]} />
+                  <Text style={text.faint}>{range.label}</Text>
+                </View>
+                <View style={styles.legendItem}>
+                  <View style={[styles.swatch, styles.swatchDashed]} />
+                  <Text style={text.faint}>{range.prevLabel}</Text>
+                </View>
+              </View>
+            </Card>
+          </View>
+          <View style={desktop ? styles.column : undefined}>
+            <SectionTitle title="Body heatmap" />
+            <Card style={[styles.chartCard, { gap: S.lg }]}>
+              <BodyMap heat={heat(now.regions)} height={desktop ? 300 : 260} />
+              <MuscleBars regions={now.regions} count={8} />
+            </Card>
+          </View>
+        </View>
+      ) : null}
+
       {data ? (
         <Animated.View key={`eat-${period}`} entering={FadeInDown.delay(60).duration(300)} style={{ gap: S.sm }}>
           <SectionTitle
@@ -210,40 +244,6 @@ export default function ProfileTab() {
             </View>
           </View>
         </Animated.View>
-      ) : null}
-
-      {empty ? (
-        <Empty
-          icon="stats-chart-outline"
-          title={`No workouts in ${periodName} yet`}
-          hint="Finish a workout and your muscle distribution shows up here."
-        />
-      ) : now && before ? (
-        <View style={[{ gap: S.md }, desktop && styles.columns]}>
-          <View style={desktop ? styles.column : undefined}>
-            <SectionTitle title="Muscle distribution" />
-            <Card style={styles.chartCard}>
-              <RadarChart axes={GROUPS} values={now.groups} compare={before.groups} size={desktop ? 340 : 300} />
-              <View style={styles.legend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.swatch, { backgroundColor: C.accent }]} />
-                  <Text style={text.faint}>{range.label}</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.swatch, styles.swatchDashed]} />
-                  <Text style={text.faint}>{range.prevLabel}</Text>
-                </View>
-              </View>
-            </Card>
-          </View>
-          <View style={desktop ? styles.column : undefined}>
-            <SectionTitle title="Body heatmap" />
-            <Card style={[styles.chartCard, { gap: S.lg }]}>
-              <BodyMap heat={heat(now.regions)} height={desktop ? 300 : 260} />
-              <MuscleBars regions={now.regions} count={8} />
-            </Card>
-          </View>
-        </View>
       ) : null}
     </Page>
   );
