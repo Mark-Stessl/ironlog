@@ -49,8 +49,11 @@ Everything is stored on the phone (SQLite), so it works offline in the gym and n
 - **Favourites** (star on any food or recipe) and **saved meals**: the bookmark next to a meal saves it as a usual meal, which is then added again with one tap from the empty meal or the add screen
 - **Soft sound effects** for adding food, removing, water (and reaching the water goal), reaching the protein goal, saving a meal and scanning a barcode; quieter than the workout sounds, all fade in, same on/off switch and volume
 - **Settings** (⚙️ on Profile): **backup** of everything (workouts, food, measurements, recipes, photos, settings) as one JSON file, saved through the share sheet (iPhone: Save to Files → iCloud Drive) or downloaded; **restore** replaces everything after a confirm showing what the file contains. A gold dot on the ⚙️ reminds you when the last backup is over two weeks old. Also sounds, links to goals/measures/calendar, and data sources
-- **Set types**: tap a set number to mark it as warm-up (W), drop set (D) or failure (F); warm-ups are left out of volume, set totals and records, and the next workout starts with the same set types
-- **Reorder exercises** with ↑/↓ during a workout and in the routine editor
+- **Set types**: tap a set number (a sheet slides up) to mark it as warm-up (W), drop set (D) or failure (F); warm-ups are left out of volume, set totals and records, and the next workout starts with the same set types
+- **Reorder exercises**: hold an exercise (in a workout or the routine editor), then drag the rows into place
+- **Number keypad** on phones for kg and reps: digits only, −1/+1, Next (kg → reps)
+- **Plate calculator** on barbell exercises: plates per side drawn in competition colours; bar weight and the plates your gym has are remembered
+- **Strength chart** on each exercise page: estimated 1RM or heaviest weight per session over 3 months, 1 year or all time
 - **Exercise notes** (seat height, grip, cues) saved with the exercise, shown and editable in every workout and on the exercise page
 - **Week strip and streak** on the home screen
 - **Personal records** per exercise (heaviest set, estimated 1RM, best session volume) and a trophy on sets that beat your previous best weight

@@ -5,6 +5,7 @@ import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-nat
 
 import { BodyMap } from '@/components/body-map';
 import { ExerciseImage } from '@/components/exercise-image';
+import { StrengthChart } from '@/components/strength-chart';
 import { Button, Card, Empty, ListCard, ListRow, SectionTitle, text } from '@/components/ui';
 import { computeRecords, getExercise, getExerciseHistory, setExerciseNotes } from '@/lib/db';
 import { formVideoUrl, getMedia, REPDB_URL } from '@/lib/exercise-media';
@@ -78,6 +79,11 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
         />
         <View style={styles.recordLine} />
         <Record label="Best session" value={rec.bestVolume ? fmtVolume(rec.bestVolume.value) : '—'} />
+      </Card>
+
+      <SectionTitle title="Strength" />
+      <Card>
+        <StrengthChart sessions={sessions} />
       </Card>
 
       {media ? (

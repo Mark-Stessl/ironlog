@@ -202,3 +202,34 @@ export function weeklyTotals(
   }
   return out;
 }
+
+export type StrengthMetric = 'e1rm' | 'weight';
+
+/**
+ * One point per session for the strength chart, oldest first: the best estimated
+ * 1RM (or heaviest weight) of that session's sets.
+ */
+export function strengthSeries(
+  sessions: { date: number; sets: { weight: number | null; reps: number | null }[] }[],
+  metric: StrengthMetric,
+): { t: number; v: number }[] {
+  const out: { t: number; v: number }[] = [];
+  for (const s of sessions) {
+    let best = 0;
+    for (const set of s.sets) {
+      const w = set.weight ?? 0;
+      const r = set.reps ?? 0;
+      if (w <= 0 || r <= 0) continue;
+      best = Math.max(best, metric === 'weight' ? w : r === 1 ? w : Math.round(w * (1 + r / 30) * 10) / 10);
+    }
+    if (best > 0) out.push({ t: s.date, v: best });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+/** Change from the first to the last point at or after `from` (null with fewer than 2 points). */
+export function strengthChange(points: { t: number; v: number }[], from: number): number | null {
+  const inRange = points.filter((p) => p.t >= from);
+  if (inRange.length < 2) return null;
+  return Math.round((inRange[inRange.length - 1].v - inRange[0].v) * 10) / 10;
+}

@@ -5,9 +5,11 @@ import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
+  FadeIn,
   FadeInDown,
+  SlideInDown,
   interpolateColor,
   useAnimatedStyle,
   useSharedValue,
@@ -28,6 +30,9 @@ import { Elapsed } from '@/components/elapsed';
 import { SoundToggle } from '@/components/sound-toggle';
 import { ExerciseImage } from '@/components/exercise-image';
 import { RestBar } from '@/components/rest-bar';
+import { NumberPadProvider, PAD_HEIGHT, cleanNumber, useNumberPad } from '@/components/number-pad';
+import { PlateButton, usesBarbell } from '@/components/plate-calculator';
+import { ReorderList } from '@/components/reorder-list';
 import { ExerciseSearch } from '@/components/exercise-search';
 import {
   Button,
@@ -53,7 +58,7 @@ import {
   getSetting,
   getWorkoutDetail,
   listExercises,
-  moveWorkoutExercise,
+  setExerciseOrder,
   removeWorkoutExercise,
   renameWorkout,
   saveWorkoutAsRoutine,
@@ -272,169 +277,193 @@ function ActiveWorkout({
     router.back();
   };
 
+  // Hold an exercise: the cards fold into a list you can drag to rearrange.
+  const [reordering, setReordering] = useState(false);
+  const startReorder = () => {
+    if (exercises.length < 2) return;
+    haptic.success();
+    setReordering(true);
+  };
+
   const addFromPanel = async (exerciseId: number) => {
     await addExerciseToWorkout(db, workout.id, exerciseId);
     await sync();
   };
 
   const log = (
-    <View style={{ flex: 1 }}>
-      <ScrollView
-        contentContainerStyle={[styles.page, desktop && styles.pageDesktop, { paddingBottom: insets.bottom + 120 }]}
-        keyboardShouldPersistTaps="handled">
-        <View style={styles.topActions}>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            onEndEditing={() => renameWorkout(db, workout.id, name)}
-            onBlur={() => renameWorkout(db, workout.id, name)}
-            placeholder="Workout name"
-            placeholderTextColor={C.textFaint}
-            style={[styles.nameInput, { flex: 1, minWidth: 0 }]}
-          />
-          {desktop ? (
-            <>
-              <Button label="Discard" kind="ghost" small onPress={discard} />
-              <Button label="Finish workout" icon="flag-outline" kind="primary" small onPress={finish} />
-            </>
-          ) : null}
-        </View>
-        <View style={styles.stats}>
-          <Stat label="Duration">
-            <Elapsed since={workout.started_at} style={text.num} />
-          </Stat>
-          <Stat label="Volume">
-            <Bump value={volume}>
-              <Text style={text.num}>{fmtVolume(volume)}</Text>
-            </Bump>
-          </Stat>
-          <Stat label="Sets">
-            <Bump value={doneSets.length}>
-              <Text style={text.num}>{doneSets.length}</Text>
-            </Bump>
-          </Stat>
-          <Pressable
-            onPress={cycleRest}
-            accessibilityRole="button"
-            accessibilityLabel="Change rest timer"
-            style={{ marginLeft: 'auto' }}>
-            <Stat label="Rest timer">
-              <Text style={[text.num, { color: C.accent }]}>{restSeconds ? `${restSeconds}s` : 'Off'}</Text>
+    <NumberPadProvider>
+      <View style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={[styles.page, desktop && styles.pageDesktop, { paddingBottom: insets.bottom + 120 }]}
+          keyboardShouldPersistTaps="handled">
+          <View style={styles.topActions}>
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              onEndEditing={() => renameWorkout(db, workout.id, name)}
+              onBlur={() => renameWorkout(db, workout.id, name)}
+              placeholder="Workout name"
+              placeholderTextColor={C.textFaint}
+              style={[styles.nameInput, { flex: 1, minWidth: 0 }]}
+            />
+            {desktop ? (
+              <>
+                <Button label="Discard" kind="ghost" small onPress={discard} />
+                <Button label="Finish workout" icon="flag-outline" kind="primary" small onPress={finish} />
+              </>
+            ) : null}
+          </View>
+          <View style={styles.stats}>
+            <Stat label="Duration">
+              <Elapsed since={workout.started_at} style={text.num} />
             </Stat>
-          </Pressable>
-        </View>
-
-        {exercises.length === 0 ? (
-          <Empty
-            icon="barbell-outline"
-            title="Add your first exercise"
-            hint={
-              desktop ? 'Pick one from the library on the right.' : 'Search for a machine or exercise to get started.'
-            }
-          />
-        ) : null}
-
-        {exercises.map((ex, exIndex) => (
-          <ExerciseCard
-            key={ex.id}
-            ex={ex}
-            first={exIndex === 0}
-            last={exIndex === exercises.length - 1}
-            onMove={async (dir) => {
-              await moveWorkoutExercise(db, ex.id, dir);
-              haptic.tap();
-              await sync();
-            }}
-            onNotes={async (notes) => {
-              await setExerciseNotes(db, ex.exercise_id, notes);
-            }}
-            onSetKind={async (setId, kind) => {
-              await setSetKind(db, setId, kind);
-              haptic.tap();
-              await sync();
-            }}
-            onPatchSet={patchSet}
-            onAddSet={async () => {
-              await addSet(db, ex.id);
-              await sync();
-            }}
-            onDeleteSet={async (setId) => {
-              await deleteSet(db, setId);
-              await sync();
-            }}
-            onRemove={async () => {
-              const ok = await confirm({
-                title: `Remove ${ex.name}?`,
-                message: 'Its sets in this workout will be deleted.',
-                confirmLabel: 'Remove',
-                destructive: true,
-              });
-              if (!ok) return;
-              await removeWorkoutExercise(db, ex.id);
-              await sync();
-            }}
-          />
-        ))}
-
-        {!desktop ? (
-          <Button
-            label="Add exercise"
-            icon="add"
-            kind="primary"
-            onPress={() => {
-              primeKeyboard();
-              router.push({ pathname: '/exercise-picker', params: { workoutId: String(workout.id) } });
-            }}
-          />
-        ) : null}
-        {exercises.length > 0 ? (
-          <Text style={[text.faint, { textAlign: 'center' }]}>Tap a set number to make it a warm-up, drop set or failure set, or to delete it.</Text>
-        ) : null}
-
-        <View style={[styles.endCard, !desktop && { flexDirection: 'column', alignItems: 'stretch' }]}>
-          <View style={{ flex: desktop ? 1 : undefined, minWidth: 0 }}>
-            <Text style={text.strong}>Done for today?</Text>
-            <Text style={text.faint}>
-              {doneSets.length
-                ? `${plural(doneSets.length, 'set')} · ${fmtVolume(volume)}`
-                : 'Tick off a set to finish.'}
-            </Text>
+            <Stat label="Volume">
+              <Bump value={volume}>
+                <Text style={text.num}>{fmtVolume(volume)}</Text>
+              </Bump>
+            </Stat>
+            <Stat label="Sets">
+              <Bump value={doneSets.length}>
+                <Text style={text.num}>{doneSets.length}</Text>
+              </Bump>
+            </Stat>
+            <Pressable
+              onPress={cycleRest}
+              accessibilityRole="button"
+              accessibilityLabel="Change rest timer"
+              style={{ marginLeft: 'auto' }}>
+              <Stat label="Rest timer">
+                <Text style={[text.num, { color: C.accent }]}>{restSeconds ? `${restSeconds}s` : 'Off'}</Text>
+              </Stat>
+            </Pressable>
           </View>
-          <View style={{ flexDirection: 'row', gap: S.sm }}>
-            <Button
-              label="Discard"
-              icon="trash-outline"
-              kind="danger"
-              small
-              onPress={discard}
-              style={!desktop && { flex: 1 }}
+
+          {exercises.length === 0 ? (
+            <Empty
+              icon="barbell-outline"
+              title="Add your first exercise"
+              hint={
+                desktop ? 'Pick one from the library on the right.' : 'Search for a machine or exercise to get started.'
+              }
             />
+          ) : null}
+
+          {reordering ? (
+            <Animated.View entering={FadeIn.duration(180)} style={{ gap: S.sm }}>
+              <View style={styles.reorderBar}>
+                <Ionicons name="reorder-three" size={20} color={C.accent} />
+                <Text style={[text.dim, { flex: 1, color: C.text }]}>Drag the exercises into the order you want</Text>
+                <Button label="Done" kind="primary" small onPress={() => setReordering(false)} />
+              </View>
+              <ReorderList
+                items={exercises.map((ex) => ({
+                  id: ex.id,
+                  title: ex.name,
+                  subtitle: `${plural(ex.sets.length, 'set')} · ${ex.muscle}`,
+                  left: <ExerciseImage name={ex.name} equipment={ex.equipment} size={36} radius={8} />,
+                }))}
+                onReorder={async (ids) => {
+                  await setExerciseOrder(db, 'workout_exercises', ids);
+                  await sync();
+                }}
+              />
+            </Animated.View>
+          ) : null}
+
+          {(reordering ? [] : exercises).map((ex) => (
+            <ExerciseCard
+              key={ex.id}
+              ex={ex}
+              onStartReorder={startReorder}
+              onNotes={async (notes) => {
+                await setExerciseNotes(db, ex.exercise_id, notes);
+              }}
+              onSetKind={async (setId, kind) => {
+                await setSetKind(db, setId, kind);
+                haptic.tap();
+                await sync();
+              }}
+              onPatchSet={patchSet}
+              onAddSet={async () => {
+                await addSet(db, ex.id);
+                await sync();
+              }}
+              onDeleteSet={async (setId) => {
+                await deleteSet(db, setId);
+                await sync();
+              }}
+              onRemove={async () => {
+                const ok = await confirm({
+                  title: `Remove ${ex.name}?`,
+                  message: 'Its sets in this workout will be deleted.',
+                  confirmLabel: 'Remove',
+                  destructive: true,
+                });
+                if (!ok) return;
+                await removeWorkoutExercise(db, ex.id);
+                await sync();
+              }}
+            />
+          ))}
+
+          {!desktop && !reordering ? (
             <Button
-              label="Finish workout"
-              icon="flag-outline"
+              label="Add exercise"
+              icon="add"
               kind="primary"
-              small
-              onPress={finish}
-              style={!desktop && { flex: 2 }}
+              onPress={() => {
+                primeKeyboard();
+                router.push({ pathname: '/exercise-picker', params: { workoutId: String(workout.id) } });
+              }}
             />
-          </View>
-        </View>
-      </ScrollView>
+          ) : null}
 
-      {rest ? (
-        <RestBar
-          key={rest.id}
-          label={rest.label}
-          endAt={rest.endAt}
-          total={rest.total}
-          bottomInset={insets.bottom}
-          onAdjust={(deltaMs) =>
-            setRest({ ...rest, endAt: rest.endAt + deltaMs, total: Math.max(rest.total + deltaMs, 1000) })
-          }
-          onDone={() => setRest(null)}
-        />
-      ) : null}
-    </View>
+          <View style={[styles.endCard, !desktop && { flexDirection: 'column', alignItems: 'stretch' }]}>
+            <View style={{ flex: desktop ? 1 : undefined, minWidth: 0 }}>
+              <Text style={text.strong}>Done for today?</Text>
+              <Text style={text.faint}>
+                {doneSets.length
+                  ? `${plural(doneSets.length, 'set')} · ${fmtVolume(volume)}`
+                  : 'Tick off a set to finish.'}
+              </Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: S.sm }}>
+              <Button
+                label="Discard"
+                icon="trash-outline"
+                kind="danger"
+                small
+                onPress={discard}
+                style={!desktop && { flex: 1 }}
+              />
+              <Button
+                label="Finish workout"
+                icon="flag-outline"
+                kind="primary"
+                small
+                onPress={finish}
+                style={!desktop && { flex: 2 }}
+              />
+            </View>
+          </View>
+          <PadSpacer />
+        </ScrollView>
+
+        {rest ? (
+          <RestBar
+            key={rest.id}
+            label={rest.label}
+            endAt={rest.endAt}
+            total={rest.total}
+            bottomInset={insets.bottom}
+            onAdjust={(deltaMs) =>
+              setRest({ ...rest, endAt: rest.endAt + deltaMs, total: Math.max(rest.total + deltaMs, 1000) })
+            }
+            onDone={() => setRest(null)}
+          />
+        ) : null}
+      </View>
+    </NumberPadProvider>
   );
 
   return (
@@ -474,9 +503,7 @@ const SET_KIND: Record<Exclude<SetKind, 'normal'>, { letter: string; color: stri
 
 function ExerciseCard({
   ex,
-  first,
-  last,
-  onMove,
+  onStartReorder,
   onNotes,
   onSetKind,
   onPatchSet,
@@ -485,9 +512,7 @@ function ExerciseCard({
   onRemove,
 }: {
   ex: WorkoutExercise;
-  first: boolean;
-  last: boolean;
-  onMove: (dir: -1 | 1) => void;
+  onStartReorder: () => void;
   onNotes: (notes: string) => void;
   onSetKind: (setId: number, kind: SetKind) => void;
   onPatchSet: (set: SetRow, patch: { weight: number | null; reps: number | null; done: boolean }) => void;
@@ -505,7 +530,10 @@ function ExerciseCard({
       <View style={styles.exHead}>
         <Pressable
           style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}
-          onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}>
+          onPress={() => router.push({ pathname: '/exercise/[id]', params: { id: String(ex.exercise_id) } })}
+          onLongPress={onStartReorder}
+          delayLongPress={400}
+          accessibilityHint="Hold to rearrange the exercises">
           <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.exName} numberOfLines={1}>
@@ -516,22 +544,16 @@ function ExerciseCard({
             </Text>
           </View>
         </Pressable>
-        <View style={styles.moveGroup}>
-          <IconButton
-            icon="chevron-up"
-            label={`Move ${ex.name} up`}
-            onPress={() => !first && onMove(-1)}
-            color={first ? C.border : C.textDim}
-            size={17}
+        {usesBarbell(ex.equipment, ex.name) ? (
+          <PlateButton
+            weight={
+              ex.sets.find((x) => !x.done && x.weight)?.weight ??
+              ex.sets.find((x) => x.weight)?.weight ??
+              ex.previous.find((x) => x.weight)?.weight ??
+              null
+            }
           />
-          <IconButton
-            icon="chevron-down"
-            label={`Move ${ex.name} down`}
-            onPress={() => !last && onMove(1)}
-            color={last ? C.border : C.textDim}
-            size={17}
-          />
-        </View>
+        ) : null}
         <IconButton icon="trash-outline" label={`Remove ${ex.name}`} onPress={onRemove} color={C.textFaint} size={16} />
       </View>
 
@@ -636,36 +658,49 @@ function SetLine({
   const special = kind !== 'normal' ? SET_KIND[kind] : null;
   const label = special ? special.name : `Set ${number}`;
 
-  // Tap the set number: choose the set type, see records, or delete the set.
-  const openMenu = async () => {
-    const pick = await choose({
-      title: label,
-      message: "Warm-ups don't count toward volume, set totals or records.",
-      icon: 'options-outline',
-      cancelLabel: 'Cancel',
-      choices: [
-        { label: 'Normal set', value: 'normal', icon: 'barbell-outline', primary: kind === 'normal' },
-        { label: 'Warm-up (W)', value: 'warmup', icon: 'sunny-outline', primary: kind === 'warmup' },
-        { label: 'Drop set (D)', value: 'drop', icon: 'trending-down-outline', primary: kind === 'drop' },
-        { label: 'Failure (F)', value: 'failure', icon: 'flash-outline', primary: kind === 'failure' },
-        ...(pr ? [{ label: 'Show records', value: 'records', icon: 'trophy-outline' as const }] : []),
-        { label: 'Delete set', value: 'delete', icon: 'trash-outline' },
-      ],
-    });
+  // Tap the set number: a sheet slides up to choose the set type, see records, or delete the set.
+  const [menu, setMenu] = useState(false);
+  const openMenu = () => {
+    haptic.tap();
+    setMenu(true);
+  };
+  const pickFromMenu = (pick: SetKind | 'records' | 'delete' | null) => {
+    setMenu(false);
     if (!pick) return;
     if (pick === 'records') return showRecords(exercise, index, prs);
     if (pick === 'delete') return onDelete();
-    if (pick !== kind) onKind(pick as SetKind);
+    if (pick !== kind) onKind(pick);
   };
 
-  const changeWeight = (t: string) => {
+  // Only numbers: a decimal point for kg, whole numbers for reps.
+  const latest = useRef({ w: weightText, r: repsText });
+  latest.current = { w: weightText, r: repsText };
+  const changeWeight = (raw: string) => {
+    const t = cleanNumber(raw, true);
     setWeightText(t);
-    onPatch({ weight: parseNum(t), reps: parseNum(repsText), done });
+    latest.current.w = t;
+    onPatch({ weight: parseNum(t), reps: parseNum(latest.current.r), done });
   };
-  const changeReps = (t: string) => {
+  const changeReps = (raw: string) => {
+    const t = cleanNumber(raw, false);
     setRepsText(t);
-    onPatch({ weight: parseNum(weightText), reps: parseNum(t), done });
+    latest.current.r = t;
+    onPatch({ weight: parseNum(latest.current.w), reps: parseNum(t), done });
   };
+  const pad = useNumberPad();
+  const keyW = `${set.id}-w`;
+  const keyR = `${set.id}-r`;
+  const openReps = () =>
+    pad.open({ key: keyR, label: `${label} · reps`, value: latest.current.r, decimal: false, onChange: changeReps });
+  const openWeight = () =>
+    pad.open({
+      key: keyW,
+      label: `${label} · kg`,
+      value: latest.current.w,
+      decimal: true,
+      onChange: changeWeight,
+      next: openReps,
+    });
 
   const toggle = () => {
     if (done) {
@@ -710,7 +745,9 @@ function SetLine({
             <Text style={[styles.kindText, { color: special.color }]}>{special.letter}</Text>
           </View>
         ) : (
-          <Text style={[styles.setNum, done && { color: C.good }]}>{number}</Text>
+          <View style={[styles.numChip, done && styles.numChipDone]}>
+            <Text style={[styles.setNum, done && { color: C.good }]}>{number}</Text>
+          </View>
         )}
       </Pressable>
       <Pressable
@@ -733,26 +770,48 @@ function SetLine({
           </Text>
         )}
       </Pressable>
-      <TextInput
-        value={weightText}
-        onChangeText={changeWeight}
-        placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
-        placeholderTextColor={C.textFaint}
-        keyboardType="decimal-pad"
-        selectTextOnFocus
-        accessibilityLabel={`Set ${index + 1} weight in kg`}
-        style={[styles.colInput, styles.input, done && styles.inputDone]}
-      />
-      <TextInput
-        value={repsText}
-        onChangeText={changeReps}
-        placeholder={prev?.reps != null ? String(prev.reps) : '0'}
-        placeholderTextColor={C.textFaint}
-        keyboardType="number-pad"
-        selectTextOnFocus
-        accessibilityLabel={`Set ${index + 1} reps`}
-        style={[styles.colInput, styles.input, done && styles.inputDone]}
-      />
+      {pad.enabled ? (
+        <PadField
+          value={weightText}
+          placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
+          active={pad.activeKey === keyW}
+          done={done}
+          label={`Set ${index + 1} weight in kg`}
+          onPress={openWeight}
+        />
+      ) : (
+        <TextInput
+          value={weightText}
+          onChangeText={changeWeight}
+          placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
+          placeholderTextColor={C.textFaint}
+          keyboardType="decimal-pad"
+          selectTextOnFocus
+          accessibilityLabel={`Set ${index + 1} weight in kg`}
+          style={[styles.colInput, styles.input, done && styles.inputDone]}
+        />
+      )}
+      {pad.enabled ? (
+        <PadField
+          value={repsText}
+          placeholder={prev?.reps != null ? String(prev.reps) : '0'}
+          active={pad.activeKey === keyR}
+          done={done}
+          label={`Set ${index + 1} reps`}
+          onPress={openReps}
+        />
+      ) : (
+        <TextInput
+          value={repsText}
+          onChangeText={changeReps}
+          placeholder={prev?.reps != null ? String(prev.reps) : '0'}
+          placeholderTextColor={C.textFaint}
+          keyboardType="number-pad"
+          selectTextOnFocus
+          accessibilityLabel={`Set ${index + 1} reps`}
+          style={[styles.colInput, styles.input, done && styles.inputDone]}
+        />
+      )}
       <Pressable
         onPress={toggle}
         hitSlop={8}
@@ -764,7 +823,122 @@ function SetLine({
           <Ionicons name="checkmark" size={13} color={done ? '#06210F' : C.textFaint} />
         </Animated.View>
       </Pressable>
+      {menu ? <SetTypeSheet title={label} kind={kind} hasRecords={pr} onPick={pickFromMenu} /> : null}
     </Animated.View>
+  );
+}
+
+/** A kg or reps field on phones: tapping it opens the number keypad instead of the phone keyboard. */
+function PadField({
+  value,
+  placeholder,
+  active,
+  done,
+  label,
+  onPress,
+}: {
+  value: string;
+  placeholder: string;
+  active: boolean;
+  done: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  const ref = useRef<React.ComponentRef<typeof View>>(null);
+  useEffect(() => {
+    // Keep the field visible above the keypad.
+    if (active)
+      (ref.current as unknown as HTMLElement | null)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [active]);
+  return (
+    <Pressable
+      ref={ref}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={[
+        styles.colInput,
+        styles.input,
+        styles.padField,
+        done && styles.inputDone,
+        active && styles.padFieldActive,
+      ]}>
+      <Text style={[styles.padFieldText, !value && { color: C.textFaint }]}>{value || placeholder}</Text>
+    </Pressable>
+  );
+}
+
+/** Keeps room at the bottom of the workout while the keypad is open. */
+function PadSpacer() {
+  const pad = useNumberPad();
+  return pad.activeKey ? <View style={{ height: PAD_HEIGHT }} /> : null;
+}
+
+const KIND_OPTIONS: { kind: SetKind; name: string; hint: string; letter: string; color: string }[] = [
+  { kind: 'normal', name: 'Normal set', hint: 'A regular working set', letter: '1', color: C.textDim },
+  { kind: 'warmup', name: 'Warm-up', hint: "Doesn't count toward volume or records", letter: 'W', color: '#F59E0B' },
+  { kind: 'drop', name: 'Drop set', hint: 'Lighter weight right after a set', letter: 'D', color: '#A78BFA' },
+  { kind: 'failure', name: 'Failure', hint: 'Taken until no more reps were possible', letter: 'F', color: '#F87171' },
+];
+
+/** Bottom sheet for a set (slides up like in Hevy): set type, records, delete. */
+function SetTypeSheet({
+  title,
+  kind,
+  hasRecords,
+  onPick,
+}: {
+  title: string;
+  kind: SetKind;
+  hasRecords: boolean;
+  onPick: (pick: SetKind | 'records' | 'delete' | null) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={() => onPick(null)}>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View entering={FadeIn.duration(160)} style={StyleSheet.absoluteFill}>
+          <Pressable style={styles.sheetBackdrop} onPress={() => onPick(null)} accessibilityLabel="Close" />
+        </Animated.View>
+        <Animated.View
+          entering={SlideInDown.springify().damping(20).stiffness(210)}
+          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, S.lg) }]}>
+          <View style={styles.sheetGrip} />
+          <Text style={[text.title, { fontSize: 18, marginBottom: 4 }]}>{title}</Text>
+          {KIND_OPTIONS.map((o) => {
+            const on = o.kind === kind;
+            return (
+              <Pressable
+                key={o.kind}
+                onPress={() => onPick(o.kind)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: on }}
+                style={({ pressed }) => [styles.sheetRow, on && styles.sheetRowOn, pressed && { opacity: 0.75 }]}>
+                <View style={[styles.sheetBadge, { borderColor: o.color }]}>
+                  <Text style={[styles.kindText, { color: o.color }]}>{o.letter}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={text.strong}>{o.name}</Text>
+                  <Text style={text.faint}>{o.hint}</Text>
+                </View>
+                {on ? <Ionicons name="checkmark" size={18} color={C.accent} /> : null}
+              </Pressable>
+            );
+          })}
+          <View style={styles.sheetDivider} />
+          {hasRecords ? (
+            <Pressable onPress={() => onPick('records')} style={styles.sheetAction} accessibilityRole="button">
+              <Ionicons name="trophy-outline" size={18} color={C.gold} />
+              <Text style={text.strong}>Show records</Text>
+            </Pressable>
+          ) : null}
+          <Pressable onPress={() => onPick('delete')} style={styles.sheetAction} accessibilityRole="button">
+            <Ionicons name="trash-outline" size={18} color={C.danger} />
+            <Text style={[text.strong, { color: C.danger }]}>Delete set</Text>
+          </Pressable>
+        </Animated.View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1092,7 +1266,66 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   kindText: { fontSize: 12, fontFamily: F.semi },
-  moveGroup: { flexDirection: 'row', alignItems: 'center' },
+  numChip: {
+    minWidth: 24,
+    height: 24,
+    paddingHorizontal: 4,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.cardHi,
+    borderWidth: 1,
+    borderColor: C.borderHi,
+  },
+  numChipDone: { backgroundColor: 'rgba(52,199,123,0.12)', borderColor: 'rgba(52,199,123,0.45)' },
+  padField: { justifyContent: 'center', alignItems: 'center' },
+  padFieldActive: { borderWidth: 1.5, borderColor: C.accent },
+  padFieldText: { color: C.text, fontFamily: F.semi, fontSize: 15, fontVariant: ['tabular-nums'] },
+  reorderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    padding: S.md,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(3,6,8,0.6)' },
+  sheet: {
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
+    gap: 6,
+    paddingHorizontal: S.lg,
+    paddingTop: 8,
+    backgroundColor: C.card,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: C.borderHi,
+  },
+  sheetGrip: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.borderHi,
+    marginBottom: 8,
+  },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: S.md, borderRadius: R.md },
+  sheetRowOn: { backgroundColor: C.accentDim },
+  sheetBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetDivider: { height: 1, backgroundColor: C.border, marginVertical: 4 },
+  sheetAction: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: 12, paddingHorizontal: S.md },
   noteRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

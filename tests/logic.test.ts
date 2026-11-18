@@ -970,4 +970,44 @@ test('set types, warm-ups left out of stats and records, notes, moving exercises
   await dbm.moveRoutineExercise(db, rex[1].id, -1);
   const after = await db.getAllAsync('SELECT exercise_id FROM routine_exercises WHERE routine_id = ? ORDER BY position', r);
   assert.deepEqual(after.map((x: { exercise_id: number }) => x.exercise_id), [b.id, a.id]);
+  // Dragging saves a whole new order at once.
+  await dbm.setExerciseOrder(db, 'workout_exercises', [weIds[1], weIds[2], weIds[0]]);
+  assert.deepEqual(await order(), [b.id, c.id, a.id]);
+});
+
+test('plate calculator', async () => {
+  const { platesFor, describePlates } = await import('../src/lib/plates');
+  const r = platesFor(82.5);
+  assert.deepEqual(r.perSide, [25, 5, 1.25]);
+  assert.equal(r.total, 82.5);
+  assert.equal(r.exact, true);
+  assert.equal(describePlates(r.perSide), '25 + 5 + 1.25');
+  assert.deepEqual(platesFor(100).perSide, [25, 15]);
+  assert.deepEqual(platesFor(140).perSide, [25, 25, 10]);
+  assert.deepEqual(platesFor(20).perSide, []); // just the bar
+  assert.equal(platesFor(15).total, 20); // lighter than the bar
+  // Can't be built exactly: shows what fits and the next weight up.
+  const odd = platesFor(83);
+  assert.equal(odd.exact, false);
+  assert.equal(odd.below, 82.5);
+  assert.equal(odd.above, 85);
+  // Other bar, and a gym without 15s and 1.25s.
+  assert.deepEqual(platesFor(60, 15, [25, 20, 10, 5, 2.5]).perSide, [20, 2.5]);
+  assert.deepEqual(platesFor(50, 20, [20, 10, 5, 2.5]).perSide, [10, 5]);
+});
+
+test('strength chart series', async () => {
+  const { strengthSeries, strengthChange } = await import('../src/lib/stats');
+  const sessions = [
+    { date: 300, sets: [{ weight: 80, reps: 8 }, { weight: 85, reps: 3 }] },
+    { date: 100, sets: [{ weight: 70, reps: 10 }] },
+    { date: 200, sets: [{ weight: null, reps: 10 }] }, // bodyweight only: no point
+  ];
+  const e = strengthSeries(sessions, 'e1rm');
+  assert.deepEqual(e.map((p) => p.t), [100, 300]); // oldest first
+  assert.equal(e[0].v, 93.3); // 70 x 10
+  assert.equal(e[1].v, 101.3); // 80 x 8 beats 85 x 3 (93.5)
+  assert.deepEqual(strengthSeries(sessions, 'weight').map((p) => p.v), [70, 85]);
+  assert.equal(strengthChange(e, 0), 8);
+  assert.equal(strengthChange(e, 150), null);
 });

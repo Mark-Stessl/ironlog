@@ -219,7 +219,6 @@ export default function FoodTab() {
                       onPress={() => saveUsual(m.key)}
                     />
                   ) : null}
-                  <IconButton icon="add" label={`Add to ${m.label}`} onPress={() => openAdd(m.key)} color={C.accent} />
                 </View>
               }
             />
@@ -251,10 +250,18 @@ export default function FoodTab() {
                     key={e.id}
                     entry={e}
                     thumb={{ ref: e.ref, ...data?.thumbs.get(e.ref) }}
-                    last={i === entries.length - 1}
+                    last={false}
                     onRemove={() => removeEntry(e)}
                   />
                 ))}
+                <Pressable
+                  onPress={() => openAdd(m.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add to ${m.label}`}
+                  style={({ pressed }) => [styles.addMore, pressed && { backgroundColor: C.cardHi }]}>
+                  <Ionicons name="add" size={18} color={C.accent} />
+                  <Text style={styles.addMoreText}>Add to {m.label.toLowerCase()}</Text>
+                </Pressable>
               </ListCard>
             ) : (
               <View style={{ gap: S.sm }}>
@@ -659,6 +666,8 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: C.borderHi,
   },
+  addMore: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingHorizontal: S.md, height: 46 },
+  addMoreText: { color: C.accent, fontFamily: F.semi, fontSize: 14 },
   usualRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   usualDelete: {
     width: 42,

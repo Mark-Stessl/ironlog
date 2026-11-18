@@ -8,6 +8,7 @@ import { SpaceGrotesk_600SemiBold } from '@expo-google-fonts/space-grotesk/600Se
 import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk/700Bold';
 import { useFonts } from 'expo-font';
 import { DarkTheme, ThemeProvider } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack } from 'expo-router/stack';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
@@ -49,47 +50,49 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
 
   return (
-    <SQLiteProvider databaseName="ironlog.db" onInit={migrate}>
-      <ThemeProvider value={navTheme}>
-        <CelebrationProvider>
-          <StatusBar style="light" />
-          <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
-            {desktop ? <Sidebar /> : null}
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Stack
-                screenOptions={{
-                  headerStyle: { backgroundColor: C.bg },
-                  headerTintColor: C.text,
-                  headerTitleStyle: { fontFamily: F.semi, fontSize: 15 },
-                  headerShadowVisible: false,
-                  headerBackButtonDisplayMode: 'minimal',
-                  contentStyle: { backgroundColor: C.bg },
-                }}>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="workout/[id]" options={{ title: 'Workout' }} />
-                <Stack.Screen name="routine/[id]" options={{ title: 'Routine' }} />
-                <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
-                <Stack.Screen name="exercise-picker" options={{ title: 'Add exercise', presentation: 'modal' }} />
-                <Stack.Screen name="exercise-new" options={{ title: 'New exercise', presentation: 'modal' }} />
-                <Stack.Screen name="exercises" options={{ title: '' }} />
-                <Stack.Screen name="calendar" options={{ title: '' }} />
-                <Stack.Screen name="measures" options={{ title: '' }} />
-                <Stack.Screen name="measure/[kind]" options={{ title: '' }} />
-                <Stack.Screen name="food-add" options={{ title: 'Add food' }} />
-                <Stack.Screen name="food/[ref]" options={{ title: '' }} />
-                <Stack.Screen name="food-scan" options={{ title: 'Scan barcode' }} />
-                <Stack.Screen name="food-new" options={{ title: 'New food' }} />
-                <Stack.Screen name="recipe-new" options={{ title: 'New recipe' }} />
-                <Stack.Screen name="recipes" options={{ title: '' }} />
-                <Stack.Screen name="settings" options={{ title: '' }} />
-                <Stack.Screen name="nutrition-goals" options={{ title: 'Nutrition goals' }} />
-              </Stack>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SQLiteProvider databaseName="ironlog.db" onInit={migrate}>
+        <ThemeProvider value={navTheme}>
+          <CelebrationProvider>
+            <StatusBar style="light" />
+            <View style={{ flex: 1, flexDirection: 'row', backgroundColor: C.bg }}>
+              {desktop ? <Sidebar /> : null}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Stack
+                  screenOptions={{
+                    headerStyle: { backgroundColor: C.bg },
+                    headerTintColor: C.text,
+                    headerTitleStyle: { fontFamily: F.semi, fontSize: 15 },
+                    headerShadowVisible: false,
+                    headerBackButtonDisplayMode: 'minimal',
+                    contentStyle: { backgroundColor: C.bg },
+                  }}>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="workout/[id]" options={{ title: 'Workout' }} />
+                  <Stack.Screen name="routine/[id]" options={{ title: 'Routine' }} />
+                  <Stack.Screen name="exercise/[id]" options={{ title: '' }} />
+                  <Stack.Screen name="exercise-picker" options={{ title: 'Add exercise', presentation: 'modal' }} />
+                  <Stack.Screen name="exercise-new" options={{ title: 'New exercise', presentation: 'modal' }} />
+                  <Stack.Screen name="exercises" options={{ title: '' }} />
+                  <Stack.Screen name="calendar" options={{ title: '' }} />
+                  <Stack.Screen name="measures" options={{ title: '' }} />
+                  <Stack.Screen name="measure/[kind]" options={{ title: '' }} />
+                  <Stack.Screen name="food-add" options={{ title: 'Add food' }} />
+                  <Stack.Screen name="food/[ref]" options={{ title: '' }} />
+                  <Stack.Screen name="food-scan" options={{ title: 'Scan barcode' }} />
+                  <Stack.Screen name="food-new" options={{ title: 'New food' }} />
+                  <Stack.Screen name="recipe-new" options={{ title: 'New recipe' }} />
+                  <Stack.Screen name="recipes" options={{ title: '' }} />
+                  <Stack.Screen name="settings" options={{ title: '' }} />
+                  <Stack.Screen name="nutrition-goals" options={{ title: 'Nutrition goals' }} />
+                </Stack>
+              </View>
             </View>
-          </View>
-          <DialogHost />
-          <SettingsLoader />
-        </CelebrationProvider>
-      </ThemeProvider>
-    </SQLiteProvider>
+            <DialogHost />
+            <SettingsLoader />
+          </CelebrationProvider>
+        </ThemeProvider>
+      </SQLiteProvider>
+    </GestureHandlerRootView>
   );
 }

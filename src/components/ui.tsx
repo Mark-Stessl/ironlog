@@ -124,12 +124,14 @@ export function ListCard({ children, style }: { children: ReactNode; style?: Sty
 export function ListRow({
   children,
   onPress,
+  onLongPress,
   active,
   last,
   style,
 }: {
   children: ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   active?: boolean;
   last?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -137,7 +139,9 @@ export function ListRow({
   return (
     <Pressable
       onPress={onPress}
-      disabled={!onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      disabled={!onPress && !onLongPress}
       style={(s: PressState) => [
         styles.listRow,
         !last && styles.listRowLine,

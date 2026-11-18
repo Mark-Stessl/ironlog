@@ -895,3 +895,14 @@ async function swapPosition(
     for (const [pos, r] of rows.entries()) await db.runAsync(`UPDATE ${table} SET position = ? WHERE id = ?`, pos, r.id);
   });
 }
+
+/** Saves a new exercise order (ids of workout_exercises or routine_exercises, top to bottom). */
+export async function setExerciseOrder(
+  db: SQLiteDatabase,
+  table: 'workout_exercises' | 'routine_exercises',
+  ids: number[],
+): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (const [pos, id] of ids.entries()) await db.runAsync(`UPDATE ${table} SET position = ? WHERE id = ?`, pos, id);
+  });
+}

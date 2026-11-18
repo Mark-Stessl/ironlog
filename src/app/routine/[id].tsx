@@ -5,8 +5,11 @@ import { useRef, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInputInstance } from 'react-native';
 
+import Animated, { FadeIn } from 'react-native-reanimated';
+
 import { ExerciseImage } from '@/components/exercise-image';
 import { ExerciseSearch } from '@/components/exercise-search';
+import { ReorderList } from '@/components/reorder-list';
 import { Button, Empty, HeaderButton, IconButton, ListCard, ListRow, text } from '@/components/ui';
 import {
   addExerciseToRoutine,
@@ -14,7 +17,7 @@ import {
   getActiveWorkout,
   getRoutine,
   listExercises,
-  moveRoutineExercise,
+  setExerciseOrder,
   removeRoutineExercise,
   renameRoutine,
   setRoutineExerciseSets,
@@ -56,6 +59,8 @@ function RoutineEditor({
   const [nameFocused, setNameFocused] = useState(false);
   // Freshly created routines still have the default name: put the cursor in the name field.
   const [isNew] = useState(routine.name === 'New routine');
+  // Hold an exercise to rearrange them by dragging.
+  const [reordering, setReordering] = useState(false);
 
   const remove = async () => {
     const ok = await confirm({
@@ -143,35 +148,37 @@ function RoutineEditor({
               : 'Add the machines and exercises for this routine.'
           }
         />
+      ) : reordering ? (
+        <Animated.View entering={FadeIn.duration(180)} style={{ gap: S.sm }}>
+          <View style={styles.reorderBar}>
+            <Ionicons name="reorder-three" size={20} color={C.accent} />
+            <Text style={[text.dim, { flex: 1, color: C.text }]}>Drag the exercises into the order you want</Text>
+            <Button label="Done" kind="primary" small onPress={() => setReordering(false)} />
+          </View>
+          <ReorderList
+            items={exercises.map((ex) => ({
+              id: ex.id,
+              title: ex.name,
+              subtitle: `${plural(ex.target_sets, 'set')} · ${ex.muscle}`,
+              left: <ExerciseImage name={ex.name} equipment={ex.equipment} size={36} radius={8} />,
+            }))}
+            onReorder={async (ids) => {
+              await setExerciseOrder(db, 'routine_exercises', ids);
+              await reload();
+            }}
+          />
+        </Animated.View>
       ) : (
         <ListCard style={{ marginTop: S.sm }}>
           {exercises.map((ex, i) => (
-            <ListRow key={ex.id} last={i === exercises.length - 1}>
-              <View style={styles.move}>
-                {[-1, 1].map((dir) => {
-                  const off = dir === -1 ? i === 0 : i === exercises.length - 1;
-                  return (
-                    <Pressable
-                      key={dir}
-                      disabled={off}
-                      hitSlop={{ left: 8, right: 4, top: dir === -1 ? 6 : 0, bottom: dir === 1 ? 6 : 0 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Move ${ex.name} ${dir === -1 ? 'up' : 'down'}`}
-                      onPress={async () => {
-                        await moveRoutineExercise(db, ex.id, dir as -1 | 1);
-                        haptic.tap();
-                        await reload();
-                      }}
-                      style={({ pressed }) => [styles.moveBtn, pressed && { backgroundColor: C.cardHi }]}>
-                      <Ionicons
-                        name={dir === -1 ? 'chevron-up' : 'chevron-down'}
-                        size={15}
-                        color={off ? C.border : C.textDim}
-                      />
-                    </Pressable>
-                  );
-                })}
-              </View>
+            <ListRow
+              key={ex.id}
+              last={i === exercises.length - 1}
+              onLongPress={() => {
+                if (exercises.length < 2) return;
+                haptic.success();
+                setReordering(true);
+              }}>
               <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={text.strong} numberOfLines={1}>
@@ -269,8 +276,17 @@ function RoutineEditor({
 }
 
 const styles = StyleSheet.create({
-  move: { marginLeft: -6, marginRight: -4, gap: 2 },
-  moveBtn: { width: 24, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  reorderBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    padding: S.md,
+    marginTop: S.sm,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
   page: { padding: S.lg, gap: 6, paddingBottom: S.xxl },
   pageDesktop: { paddingHorizontal: 40, paddingTop: S.xl, maxWidth: 760, width: '100%', alignSelf: 'center' },
   panel: { width: 360, borderLeftWidth: 1, borderLeftColor: C.border },
