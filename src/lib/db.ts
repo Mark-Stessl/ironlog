@@ -77,7 +77,7 @@ export type WorkoutExercise = {
   muscle: string;
   equipment: string;
   secondary: string;
-  /** The exercise's own note (seat height, grip...), shown in every workout. */
+  /** Note for this exercise in this workout only. */
   notes: string;
   track: Track;
   sets: SetRow[];
@@ -273,7 +273,16 @@ export async function migrate(db: SQLiteDatabase): Promise<void> {
       await db.execAsync('PRAGMA user_version = 8');
     });
   }
-  // Future schema changes: add `if (version < 9) { ... }` blocks here.
+  if (version < 9) {
+    // Notes on an exercise in a workout belong to that workout only.
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE workout_exercises ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+        PRAGMA user_version = 9;
+      `);
+    });
+  }
+  // Future schema changes: add `if (version < 10) { ... }` blocks here.
 }
 
 // ── Settings ────────────────────────────────────────────────────────────
@@ -490,7 +499,7 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number): P
   const workout = await db.getFirstAsync<Workout>('SELECT * FROM workouts WHERE id = ?', workoutId);
   if (!workout) return null;
   const rows = await db.getAllAsync<Omit<WorkoutExercise, 'sets' | 'previous' | 'best'>>(
-    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment, e.secondary, e.notes, e.track
+    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment, e.secondary, we.notes, e.track
      FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
      WHERE we.workout_id = ? ORDER BY we.position`,
     workoutId,
@@ -541,6 +550,142 @@ export async function addExerciseToWorkout(db: SQLiteDatabase, workoutId: number
       );
     }
   });
+}
+
+/** What a swap changed, so it can be undone. */
+export type SwapResult = {
+  /** The workout_exercises row the new exercise lives in. */
+  newId: number;
+  /** True when a new row was added (the old exercise kept its ticked sets). */
+  created: boolean;
+  oldExerciseId: number;
+  /** The open sets as they were before the swap. */
+  moved: SetRow[];
+};
+
+/**
+ * Swaps an exercise in a running workout. Ticked sets stay with the old exercise;
+ * the open sets move to the new one and get its numbers from last time.
+ */
+export async function swapWorkoutExercise(
+  db: SQLiteDatabase,
+  workoutExerciseId: number,
+  newExerciseId: number,
+): Promise<SwapResult> {
+  let result: SwapResult | null = null;
+  await db.withTransactionAsync(async () => {
+    const we = await db.getFirstAsync<{ workout_id: number; exercise_id: number; position: number }>(
+      'SELECT workout_id, exercise_id, position FROM workout_exercises WHERE id = ?',
+      workoutExerciseId,
+    );
+    if (!we) throw new Error('Exercise not in workout');
+    const sets = await db.getAllAsync<SetRow>(
+      'SELECT * FROM sets WHERE workout_exercise_id = ? ORDER BY position',
+      workoutExerciseId,
+    );
+    const open = sets.filter((x) => !x.done);
+    const keepsSome = sets.length > open.length;
+    let target = workoutExerciseId;
+    if (keepsSome) {
+      // The ticked sets stay; the new exercise goes right below.
+      await db.runAsync(
+        'UPDATE workout_exercises SET position = position + 1 WHERE workout_id = ? AND position > ?',
+        we.workout_id,
+        we.position,
+      );
+      const ins = await db.runAsync(
+        'INSERT INTO workout_exercises (workout_id, exercise_id, position) VALUES (?, ?, ?)',
+        we.workout_id,
+        newExerciseId,
+        we.position + 1,
+      );
+      target = ins.lastInsertRowId;
+    } else {
+      await db.runAsync('UPDATE workout_exercises SET exercise_id = ? WHERE id = ?', newExerciseId, workoutExerciseId);
+    }
+    const prev = await previousSets(db, newExerciseId, we.workout_id);
+    const moving = open.length ? open : [];
+    for (let i = 0; i < moving.length; i++) {
+      const p = prev[i];
+      await db.runAsync(
+        'UPDATE sets SET workout_exercise_id = ?, position = ?, weight = ?, reps = ?, seconds = ?, distance = ? WHERE id = ?',
+        target,
+        i,
+        p?.weight ?? null,
+        p?.reps ?? null,
+        p?.seconds ?? null,
+        p?.distance ?? null,
+        moving[i].id,
+      );
+    }
+    // Nothing left to move (all sets were ticked): start the new exercise with one set.
+    if (!moving.length) await db.runAsync('INSERT INTO sets (workout_exercise_id, position) VALUES (?, 0)', target);
+    result = { newId: target, created: keepsSome, oldExerciseId: we.exercise_id, moved: open };
+  });
+  return result!;
+}
+
+/** Puts everything back the way it was before `swapWorkoutExercise`. */
+export async function undoSwap(db: SQLiteDatabase, workoutExerciseId: number, swap: SwapResult): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    for (const s of swap.moved)
+      await db.runAsync(
+        'UPDATE sets SET workout_exercise_id = ?, position = ?, weight = ?, reps = ?, seconds = ?, distance = ?, done = 0 WHERE id = ?',
+        workoutExerciseId,
+        s.position,
+        s.weight,
+        s.reps,
+        s.seconds,
+        s.distance,
+        s.id,
+      );
+    if (swap.created) {
+      const we = await db.getFirstAsync<{ workout_id: number; position: number }>(
+        'SELECT workout_id, position FROM workout_exercises WHERE id = ?',
+        swap.newId,
+      );
+      await db.runAsync('DELETE FROM workout_exercises WHERE id = ?', swap.newId);
+      if (we)
+        await db.runAsync(
+          'UPDATE workout_exercises SET position = position - 1 WHERE workout_id = ? AND position > ?',
+          we.workout_id,
+          we.position,
+        );
+    } else {
+      // Sets added for the new exercise go; the moved ones are back.
+      const keep = swap.moved.map((s) => s.id);
+      await db.runAsync(
+        `DELETE FROM sets WHERE workout_exercise_id = ? ${keep.length ? `AND id NOT IN (${keep.map(() => '?').join(',')})` : ''}`,
+        workoutExerciseId,
+        ...keep,
+      );
+      await db.runAsync(
+        'UPDATE workout_exercises SET exercise_id = ? WHERE id = ?',
+        swap.oldExerciseId,
+        workoutExerciseId,
+      );
+    }
+  });
+}
+
+/** For the swap sheet: what you did last time on each exercise (first set of the last session). */
+export async function lastTimeFor(
+  db: SQLiteDatabase,
+  exerciseIds: number[],
+  excludeWorkoutId: number,
+): Promise<Map<number, PrevSet>> {
+  const out = new Map<number, PrevSet>();
+  for (const id of exerciseIds) {
+    const prev = await previousSets(db, id, excludeWorkoutId);
+    const first = prev.find((p) => p.kind !== 'warmup') ?? prev[0];
+    if (first) out.set(id, first);
+  }
+  return out;
+}
+
+/** Saves the note of one exercise in one workout. */
+export async function setWorkoutExerciseNotes(db: SQLiteDatabase, workoutExerciseId: number, notes: string) {
+  await db.runAsync('UPDATE workout_exercises SET notes = ? WHERE id = ?', notes.trim(), workoutExerciseId);
 }
 
 export async function removeWorkoutExercise(db: SQLiteDatabase, workoutExerciseId: number): Promise<void> {

@@ -10,6 +10,7 @@ import { Modal, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text
 import Animated, {
   FadeIn,
   FadeInDown,
+  FadeOut,
   SlideInDown,
   interpolateColor,
   useAnimatedStyle,
@@ -63,7 +64,12 @@ import {
   removeWorkoutExercise,
   renameWorkout,
   saveWorkoutAsRoutine,
-  setExerciseNotes,
+  setWorkoutExerciseNotes,
+  swapWorkoutExercise,
+  undoSwap,
+  lastTimeFor,
+  type Exercise,
+  type SwapResult,
   setSetKind,
   setSetting,
   updateSet,
@@ -99,6 +105,7 @@ import { sound } from '@/lib/sound';
 import { heat, muscleStats } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { primeKeyboard } from '@/lib/keyboard';
+import { searchExercises } from '@/lib/search';
 import { useFocusData } from '@/lib/use-focus-data';
 
 /** How far a set row slides open to show its bin. */
@@ -299,6 +306,30 @@ function ActiveWorkout({
 
   const scrollRef = useRef<ScrollViewInstance>(null);
 
+  // Swap an exercise (machine taken): open sets move to the new one, with an Undo for a few seconds.
+  const [swapping, setSwapping] = useState<WorkoutExercise | null>(null);
+  const [undo, setUndo] = useState<{ id: number; swap: SwapResult; from: string; to: string } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const swapTo = async (target: Exercise) => {
+    const ex = swapping;
+    setSwapping(null);
+    if (!ex) return;
+    const swap = await swapWorkoutExercise(db, ex.id, target.id);
+    haptic.success();
+    await sync();
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ id: ex.id, swap, from: ex.name, to: target.name });
+    undoTimer.current = setTimeout(() => setUndo(null), 7000);
+  };
+  const undoLast = async () => {
+    if (!undo) return;
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(null);
+    await undoSwap(db, undo.id, undo.swap);
+    haptic.tap();
+    await sync();
+  };
+
   const addFromPanel = async (exerciseId: number) => {
     await addExerciseToWorkout(db, workout.id, exerciseId);
     await sync();
@@ -377,8 +408,9 @@ function ActiveWorkout({
               <ExerciseCard
                 key={ex.id}
                 ex={ex}
+                onSwap={() => setSwapping(ex)}
                 onNotes={async (notes) => {
-                  await setExerciseNotes(db, ex.exercise_id, notes);
+                  await setWorkoutExerciseNotes(db, ex.id, notes);
                 }}
                 onSetKind={async (setId, kind) => {
                   await setSetKind(db, setId, kind);
@@ -465,6 +497,30 @@ function ActiveWorkout({
             onDone={() => setRest(null)}
           />
         ) : null}
+        {undo ? (
+          <Animated.View
+            entering={SlideInDown.springify().damping(20)}
+            exiting={FadeOut.duration(150)}
+            style={[styles.undoBar, { bottom: (rest ? 76 : 16) + insets.bottom }]}>
+            <Ionicons name="swap-horizontal" size={18} color={C.accent} />
+            <Text style={[text.body, { flex: 1 }]} numberOfLines={2}>
+              Swapped to <Text style={{ fontFamily: F.semi }}>{undo.to}</Text>
+            </Text>
+            <Pressable onPress={undoLast} hitSlop={8} accessibilityRole="button" accessibilityLabel="Undo swap">
+              <Text style={[text.strong, { color: C.accent }]}>Undo</Text>
+            </Pressable>
+          </Animated.View>
+        ) : null}
+        {swapping ? (
+          <SwapSheet
+            ex={swapping}
+            library={library ?? []}
+            workoutId={workout.id}
+            taken={exercises.map((e) => e.exercise_id)}
+            onPick={swapTo}
+            onClose={() => setSwapping(null)}
+          />
+        ) : null}
       </View>
     </NumberPadProvider>
   );
@@ -506,6 +562,7 @@ const SET_KIND: Record<Exclude<SetKind, 'normal'>, { letter: string; color: stri
 
 function ExerciseCard({
   ex,
+  onSwap,
   onNotes,
   onSetKind,
   onPatchSet,
@@ -514,6 +571,7 @@ function ExerciseCard({
   onRemove,
 }: {
   ex: WorkoutExercise;
+  onSwap: () => void;
   onNotes: (notes: string) => void;
   onSetKind: (setId: number, kind: SetKind) => void;
   onPatchSet: (set: SetRow, patch: SetPatch) => void;
@@ -565,6 +623,9 @@ function ExerciseCard({
             />
           ) : null}
           {drag.folded ? null : (
+            <IconButton icon="swap-horizontal" label={`Swap ${ex.name}`} onPress={onSwap} color={C.accent} size={18} />
+          )}
+          {drag.folded ? null : (
             <IconButton
               icon="trash-outline"
               label={`Remove ${ex.name}`}
@@ -576,14 +637,14 @@ function ExerciseCard({
         </View>
         {drag.folded ? null : (
           <>
-            {/* The exercise's own note: it's saved with the exercise and shows up every time. */}
+            {/* A note for this exercise in this workout only. */}
             <View style={[styles.noteRow, notes ? styles.noteRowFilled : null]}>
               <Ionicons name="create-outline" size={13} color={notes ? C.gold : C.textFaint} />
               <TextInput
                 value={notes}
                 onChangeText={setNotes}
                 onBlur={() => notes.trim() !== (ex.notes ?? '') && onNotes(notes)}
-                placeholder="Add a note (seat height, grip…)"
+                placeholder="Add a note for today"
                 placeholderTextColor={C.textFaint}
                 multiline
                 accessibilityLabel={`Note for ${ex.name}`}
@@ -1072,6 +1133,138 @@ function SetTypeSheet({
   );
 }
 
+/**
+ * Sheet to swap an exercise: exercises for the same muscle first (the ones you use
+ * most), with what you did last time, or search the whole library.
+ */
+function SwapSheet({
+  ex,
+  library,
+  workoutId,
+  taken,
+  onPick,
+  onClose,
+}: {
+  ex: WorkoutExercise;
+  library: Exercise[];
+  workoutId: number;
+  taken: number[];
+  onPick: (e: Exercise) => void;
+  onClose: () => void;
+}) {
+  const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
+  const [query, setQuery] = useState('');
+  const [last, setLast] = useState<Map<number, PrevSet>>(new Map());
+  const open = ex.sets.filter((x) => !x.done).length;
+  const ticked = ex.sets.length - open;
+
+  const options = library.filter((e) => e.id !== ex.exercise_id && !taken.includes(e.id));
+  const sameMuscle = options
+    .filter((e) => e.muscle === ex.muscle)
+    // Ones you use most, then the same kind of equipment (machine for a machine), then A–Z.
+    .sort(
+      (a, b) =>
+        b.use_count - a.use_count ||
+        Number(b.equipment === ex.equipment) - Number(a.equipment === ex.equipment) ||
+        a.name.localeCompare(b.name),
+    )
+    .slice(0, 10);
+  const shown = query.trim() ? searchExercises(query, options).slice(0, 12) : sameMuscle;
+  const key = shown.map((e) => e.id).join(',');
+  useEffect(() => {
+    let live = true;
+    lastTimeFor(
+      db,
+      shown.map((e) => e.id),
+      workoutId,
+    ).then((m) => live && setLast(m));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const lastText = (e: Exercise) => {
+    const p = last.get(e.id);
+    if (!p) return 'Not done yet';
+    return `Last time ${
+      e.track && e.track !== 'weight_reps'
+        ? fmtCardio(p.seconds, p.distance, e.track === 'time_floors')
+        : fmtSet(p.weight, p.reps)
+    }`;
+  };
+
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View entering={FadeIn.duration(160)} style={StyleSheet.absoluteFill}>
+          <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityLabel="Close" />
+        </Animated.View>
+        <Animated.View
+          entering={SlideInDown.springify().damping(20).stiffness(210)}
+          style={[styles.sheet, styles.swapSheet, { paddingBottom: Math.max(insets.bottom, S.lg) }]}>
+          <View style={styles.sheetGrip} />
+          <Text style={[text.title, { fontSize: 18 }]} numberOfLines={1}>
+            Swap {ex.name}
+          </Text>
+          <Text style={[text.faint, { marginBottom: 4 }]}>
+            {ticked
+              ? `${plural(open, 'open set')} move${open === 1 ? 's' : ''} over. The ${plural(ticked, 'set')} you ticked stay${ticked === 1 ? 's' : ''} with ${ex.name}.`
+              : `Your ${plural(open, 'set')} move${open === 1 ? 's' : ''} over, filled with your numbers from last time.`}
+          </Text>
+          <View style={styles.swapSearch}>
+            <Ionicons name="search" size={16} color={C.textFaint} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search any exercise"
+              placeholderTextColor={C.textFaint}
+              accessibilityLabel="Search exercises to swap to"
+              style={styles.swapInput}
+            />
+            {query ? (
+              <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+                <Ionicons name="close-circle" size={16} color={C.textFaint} />
+              </Pressable>
+            ) : null}
+          </View>
+          <Text style={[text.label, { marginTop: 6 }]}>{query.trim() ? 'Results' : `Same muscle · ${ex.muscle}`}</Text>
+          <ScrollView style={{ maxHeight: 340 }} keyboardShouldPersistTaps="handled">
+            {shown.length === 0 ? (
+              <Text style={[text.faint, { paddingVertical: S.md }]}>Nothing found. Try another name.</Text>
+            ) : (
+              shown.map((e, i) => (
+                <Pressable
+                  key={e.id}
+                  onPress={() => onPick(e)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Swap to ${e.name}`}
+                  style={({ pressed }) => [
+                    styles.swapRow,
+                    i < shown.length - 1 && styles.swapRowLine,
+                    pressed && { backgroundColor: C.cardHi },
+                  ]}>
+                  <ExerciseImage name={e.name} equipment={e.equipment} size={34} radius={8} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={text.strong} numberOfLines={1}>
+                      {e.name}
+                    </Text>
+                    <Text style={text.faint} numberOfLines={1}>
+                      {lastText(e)}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={C.textFaint} />
+                </Pressable>
+              ))
+            )}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 // ── Finished workout (read-only) ────────────────────────────────────────
 
 function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
@@ -1246,6 +1439,11 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
                 <ExerciseImage name={ex.name} equipment={ex.equipment} size={32} radius={7} />
                 <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
                   <Text style={styles.exName}>{ex.name}</Text>
+                  {ex.notes ? (
+                    <Text style={[text.faint, { color: C.gold }]} numberOfLines={3}>
+                      {ex.notes}
+                    </Text>
+                  ) : null}
                   {ex.sets.map((s, n) => {
                     const special = s.kind && s.kind !== 'normal' ? SET_KIND[s.kind] : null;
                     const number = ex.sets.slice(0, n + 1).filter((x) => !x.kind || x.kind === 'normal').length;
@@ -1430,6 +1628,36 @@ const styles = StyleSheet.create({
   dragBox: { shadowColor: '#000', shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   folded: { height: FOLDED, justifyContent: 'center', paddingVertical: 0 },
   held: { borderColor: C.accent },
+  undoBar: {
+    position: 'absolute',
+    left: S.lg,
+    right: S.lg,
+    zIndex: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.md,
+    paddingVertical: 12,
+    paddingHorizontal: S.lg,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.cardHi,
+  },
+  swapSheet: { maxHeight: '86%' },
+  swapSearch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.sm,
+    height: 42,
+    paddingHorizontal: S.md,
+    borderRadius: R.md,
+    borderWidth: 1,
+    borderColor: C.borderHi,
+    backgroundColor: C.bg,
+  },
+  swapInput: { flex: 1, color: C.text, fontFamily: F.regular, fontSize: 15, height: '100%' },
+  swapRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, paddingVertical: 10, paddingHorizontal: 4 },
+  swapRowLine: { borderBottomWidth: 1, borderBottomColor: C.border },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(3,6,8,0.6)' },
   sheet: {
     width: '100%',

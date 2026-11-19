@@ -113,6 +113,44 @@ test('database: cardio sets keep time and distance, and add no volume', async ()
   assert.equal(hist[0].sets[0].distance, 3.2);
 });
 
+test('database: swapping an exercise moves the open sets, and undo puts it back', async () => {
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const all = await dbm.listExercises(db);
+  const press = all.find((e) => e.name === 'Chest Press (Machine)')!;
+  const fly = all.find((e) => e.name === 'Pec Deck')!;
+  const id = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, id, press.id);
+  let we = (await dbm.getWorkoutDetail(db, id))!.exercises[0];
+  await dbm.addSet(db, we.id);
+  await dbm.addSet(db, we.id);
+  we = (await dbm.getWorkoutDetail(db, id))!.exercises[0];
+  await dbm.updateSet(db, we.sets[0].id, { weight: 50, reps: 10, done: true });
+  await dbm.updateSet(db, we.sets[1].id, { weight: 50, reps: 9, done: false });
+
+  // One set ticked: it stays with the press, the two open ones go to the pec deck.
+  const swap = await dbm.swapWorkoutExercise(db, we.id, fly.id);
+  assert.equal(swap.created, true);
+  let d = (await dbm.getWorkoutDetail(db, id))!;
+  assert.deepEqual(d.exercises.map((e) => [e.name, e.sets.length]), [['Chest Press (Machine)', 1], ['Pec Deck', 2]]);
+  assert.deepEqual([d.exercises[1].sets[0].weight, d.exercises[1].sets[0].reps], [null, null]);
+
+  await dbm.undoSwap(db, we.id, swap);
+  d = (await dbm.getWorkoutDetail(db, id))!;
+  assert.equal(d.exercises.length, 1);
+  assert.deepEqual(d.exercises[0].sets.map((s) => [s.weight, s.reps, s.done]), [[50, 10, 1], [50, 9, 0], [null, null, 0]]);
+
+  // Nothing ticked yet: the exercise itself is replaced.
+  const id2 = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, id2, press.id);
+  const we2 = (await dbm.getWorkoutDetail(db, id2))!.exercises[0];
+  const swap2 = await dbm.swapWorkoutExercise(db, we2.id, fly.id);
+  assert.equal(swap2.created, false);
+  assert.equal((await dbm.getWorkoutDetail(db, id2))!.exercises[0].name, 'Pec Deck');
+  await dbm.undoSwap(db, we2.id, swap2);
+  assert.equal((await dbm.getWorkoutDetail(db, id2))!.exercises[0].name, 'Chest Press (Machine)');
+});
+
 test('database: full workout flow', async (t) => {
   // Freeze the clock so both workouts finish in the same millisecond (the hardest case for ordering).
   t.mock.timers.enable({ apis: ['Date'], now: 1_800_000_000_000 });
@@ -873,7 +911,7 @@ test('backup: export, check and restore everything', async () => {
 
   const backup = await bk.createBackup(db);
   assert.equal(backup.app, 'ironlog');
-  assert.equal(backup.version, 8);
+  assert.equal(backup.version, 9);
   assert.deepEqual(bk.summarize(backup), { workouts: 1, foodDays: 1, measurements: 1, recipes: 0, photos: 0 });
   const text = JSON.stringify(backup);
   assert.match(bk.backupFileName(new Date(2026, 10, 8)), /^ironlog-backup-2026-11-08\.json$/);
@@ -882,7 +920,7 @@ test('backup: export, check and restore everything', async () => {
   const db2 = fakeDb();
   await dbm.migrate(db2);
   await dbm.setSetting(db2, 'profile_name', 'Someone else');
-  await bk.restoreBackup(db2, bk.parseBackup(text, 8));
+  await bk.restoreBackup(db2, bk.parseBackup(text, 9));
   assert.equal(await dbm.getSetting(db2, 'profile_name', ''), 'Mark');
   assert.equal((await fdb.dayLog(db2, '2026-11-18')).length, 1);
   assert.equal(await fdb.dayWater(db2, '2026-11-18'), 500);
@@ -967,9 +1005,14 @@ test('set types, warm-ups left out of stats and records, notes, moving exercises
   const next = (await dbm.getWorkoutDetail(db, id2))!.exercises[0].sets.map((s) => s.kind);
   assert.deepEqual(next, ['warmup', 'normal']);
 
-  // Notes stay with the exercise and show in workouts.
-  await dbm.setExerciseNotes(db, a.id, '  Seat 4, narrow grip ');
+  // A note in a workout belongs to that workout only.
+  const we2 = (await dbm.getWorkoutDetail(db, id2))!.exercises[0];
+  await dbm.setWorkoutExerciseNotes(db, we2.id, '  Seat 4, narrow grip ');
   assert.equal((await dbm.getWorkoutDetail(db, id2))!.exercises[0].notes, 'Seat 4, narrow grip');
+  const id3 = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, id3, a.id);
+  assert.equal((await dbm.getWorkoutDetail(db, id3))!.exercises[0].notes, '');
+  await dbm.deleteWorkout(db, id3);
 
   // Moving exercises in a workout and in a routine.
   await dbm.addExerciseToWorkout(db, id2, b.id);
