@@ -14,6 +14,8 @@ import { useAnimatedStyle, useSharedValue, withSpring, withTiming, type SharedVa
 
 import { haptic } from '@/lib/haptics';
 
+/** How long to hold before an item lifts. */
+const HOLD_MS = 600;
 const SPRING = { damping: 24, stiffness: 280 };
 
 type Ctx = {
@@ -200,15 +202,40 @@ export function useDragItem(id: number, nodeRef: RefObject<View | null>) {
   if (!ctx) throw new Error('useDragItem needs a DragSortProvider');
   const { positions, dragY, active, instant, step, ids } = ctx;
   const index = ids.indexOf(id);
+  const touch = useRef<{ on: boolean; moved: boolean; timer: ReturnType<typeof setTimeout> | null }>({
+    on: false,
+    moved: false,
+    timer: null,
+  });
 
+  // The pan follows the finger from the first touch; the item only lifts once the
+  // finger has rested ~0.6 s. Moving before that is a scroll (or a tap) and is ignored.
+  const finish = () => {
+    if (touch.current.timer) clearTimeout(touch.current.timer);
+    touch.current.timer = null;
+    if (touch.current.on) ctx.end(id);
+    touch.current.on = false;
+  };
   const gesture = usePanGesture({
-    activateAfterLongPress: 350,
     minDistance: 0,
     runOnJS: true,
-    onActivate: () => ctx.begin(id, nodeRef.current),
-    onUpdate: (e) => ctx.move(id, e.translationY),
-    onDeactivate: () => ctx.end(id),
-    onFinalize: () => ctx.end(id),
+    onActivate: () => {
+      touch.current.on = false;
+      touch.current.moved = false;
+      if (touch.current.timer) clearTimeout(touch.current.timer);
+      touch.current.timer = setTimeout(() => {
+        touch.current.timer = null;
+        if (touch.current.moved) return;
+        touch.current.on = true;
+        ctx.begin(id, nodeRef.current);
+      }, HOLD_MS);
+    },
+    onUpdate: (e) => {
+      if (touch.current.on) return ctx.move(id, e.translationY);
+      if (Math.abs(e.translationX) > 8 || Math.abs(e.translationY) > 8) touch.current.moved = true;
+    },
+    onDeactivate: finish,
+    onFinalize: finish,
   });
 
   const style = useAnimatedStyle(() => {

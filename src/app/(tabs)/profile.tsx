@@ -1,11 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, type PressableStateCallbackType } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { Avatar } from '@/components/avatar';
 import { BodyMap } from '@/components/body-map';
 import { CountUp } from '@/components/count-up';
 import { MuscleBars } from '@/components/muscle-bars';
@@ -32,6 +32,9 @@ import { nutritionSummary, weightChange } from '@/lib/overview';
 import { GROUPS, heat, muscleStats, periodRange, type Period } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
+import { choose } from '@/lib/dialog';
+import { haptic } from '@/lib/haptics';
+import { pickPhoto } from '@/lib/photo';
 
 const PERIODS: { key: Period; label: string }[] = [
   { key: 'week', label: 'Week' },
@@ -82,9 +85,11 @@ export default function ProfileTab() {
       listRestDays(db),
     ]);
     const lastBackup = Number(await getSetting(db, 'last_backup', '0')) || null;
+    const photo = await getSetting(db, 'profile_photo', '');
     const streak = dayStreak(new Set([...workouts.map((w) => dayKey(w.started_at)), ...rest]));
     return {
       name,
+      photo,
       totals,
       exercises: exercises.length,
       weight: latest[WEIGHT.key]?.value,
@@ -101,7 +106,12 @@ export default function ProfileTab() {
     <Page maxWidth={1000} topInset>
       {profile ? (
         <>
-          <ProfileHead name={profile.name} first={profile.totals.first} backupDue={profile.backupDue} />
+          <ProfileHead
+            name={profile.name}
+            photo={profile.photo}
+            first={profile.totals.first}
+            backupDue={profile.backupDue}
+          />
           <View style={styles.totals}>
             <Total label="Workouts" value={profile.totals.workouts} big />
             <Total label="Total volume" value={profile.totals.volume} format={fmtVolume} />
@@ -253,10 +263,12 @@ type PressState = PressableStateCallbackType & { hovered?: boolean };
 
 function ProfileHead({
   name: saved,
+  photo: savedPhoto,
   first,
   backupDue: due,
 }: {
   name: string;
+  photo: string;
   first: number | null;
   backupDue: boolean;
 }) {
@@ -267,20 +279,50 @@ function ProfileHead({
   const input = useRef<React.ComponentRef<typeof TextInput>>(null);
   useEffect(() => setName(saved), [saved]);
   const save = () => setSetting(db, 'profile_name', name.trim());
-  const initial = (name.trim()[0] ?? '').toUpperCase();
+
+  // Profile picture: take one or pick one you already have; it stays on this phone.
+  const [photo, setPhoto] = useState(savedPhoto);
+  useEffect(() => setPhoto(savedPhoto), [savedPhoto]);
+  const changePhoto = async () => {
+    if (photo) {
+      const pick = await choose({
+        title: 'Profile picture',
+        cancelLabel: 'Cancel',
+        icon: 'person-circle-outline',
+        choices: [
+          { label: 'New photo', value: 'new', icon: 'camera-outline', primary: true },
+          { label: 'Remove photo', value: 'remove', icon: 'trash-outline' },
+        ],
+      });
+      if (pick === 'remove') {
+        setPhoto('');
+        await setSetting(db, 'profile_photo', '');
+        return;
+      }
+      if (pick !== 'new') return;
+    }
+    const img = await pickPhoto({ title: 'Profile picture', square: true, width: 360 });
+    if (!img) return;
+    haptic.success();
+    setPhoto(img);
+    await setSetting(db, 'profile_photo', img);
+  };
   const since = first
     ? `Training since ${new Date(first).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
     : 'Your first workout starts the story';
 
   return (
     <View style={styles.head}>
-      <LinearGradient colors={['#22D3EE', '#0E7490']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
-        {initial ? (
-          <Text style={styles.avatarText}>{initial}</Text>
-        ) : (
-          <Ionicons name="person" size={26} color={C.onAccent} />
-        )}
-      </LinearGradient>
+      <Pressable
+        onPress={changePhoto}
+        accessibilityRole="button"
+        accessibilityLabel={photo ? 'Change profile picture' : 'Add a profile picture'}
+        style={({ pressed }) => pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] }}>
+        <Avatar photo={photo} name={name} size={64} />
+        <View style={styles.cameraBadge}>
+          <Ionicons name="camera" size={12} color={C.onAccent} />
+        </View>
+      </Pressable>
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={[styles.nameWrap, focused && styles.nameWrapFocused]}>
           {/* Invisible copy of the name to size the field, so the pencil sits right after it. */}
@@ -439,14 +481,19 @@ const styles = StyleSheet.create({
     marginTop: S.xs,
     marginBottom: S.sm,
   },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  cameraBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: C.accent,
+    borderWidth: 2,
+    borderColor: C.bg,
   },
-  avatarText: { color: C.onAccent, fontFamily: F.display, fontSize: 28 },
   nameWrap: {
     flexDirection: 'row',
     alignItems: 'center',

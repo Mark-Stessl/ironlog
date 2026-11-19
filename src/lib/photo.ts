@@ -9,12 +9,15 @@ import { choose } from '@/lib/dialog';
  * and returns it as a JPEG data URI. Photos stay on the phone (in the app's database).
  * Returns null when cancelled or when permission was denied.
  */
-export async function pickPhoto(): Promise<string | null> {
+export async function pickPhoto(
+  opts: { title?: string; square?: boolean; width?: number } = {},
+): Promise<string | null> {
+  const maxWidth = opts.width ?? 800;
   let source: 'camera' | 'library' = 'library';
   // In the browser the file picker already offers "Take photo" on phones.
   if (Platform.OS !== 'web') {
     const answer = await choose({
-      title: 'Add a photo',
+      title: opts.title ?? 'Add a photo',
       cancelLabel: 'Cancel',
       icon: 'camera-outline',
       choices: [
@@ -28,7 +31,7 @@ export async function pickPhoto(): Promise<string | null> {
   const options: ImagePicker.ImagePickerOptions = {
     mediaTypes: ['images'],
     allowsEditing: true,
-    aspect: [4, 3],
+    aspect: opts.square ? [1, 1] : [4, 3],
     quality: 0.9,
   };
   let result: ImagePicker.ImagePickerResult;
@@ -43,7 +46,14 @@ export async function pickPhoto(): Promise<string | null> {
   const asset = result.assets[0];
   try {
     const ctx = ImageManipulator.manipulate(asset.uri);
-    if ((asset.width ?? 0) > 800) ctx.resize({ width: 800 });
+    const w = asset.width ?? 0;
+    const h = asset.height ?? 0;
+    // Square photos (profile picture): cut the middle out of whatever was picked.
+    if (opts.square && w && h && w !== h) {
+      const side = Math.min(w, h);
+      ctx.crop({ originX: (w - side) / 2, originY: (h - side) / 2, width: side, height: side });
+      if (side > maxWidth) ctx.resize({ width: maxWidth, height: maxWidth });
+    } else if (w > maxWidth) ctx.resize({ width: maxWidth });
     const image = await ctx.renderAsync();
     const saved = await image.saveAsync({ compress: 0.72, format: SaveFormat.JPEG, base64: true });
     return saved.base64 ? `data:image/jpeg;base64,${saved.base64}` : null;

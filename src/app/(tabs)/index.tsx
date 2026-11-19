@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { Fragment } from 'react';
 import { Pressable, StyleSheet, Text, View, type PressableStateCallbackType } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { Avatar } from '@/components/avatar';
 import { ProgressChart } from '@/components/progress-chart';
 import { Card, Empty, ListCard, ListRow, Page, SectionTitle, text, type IconName } from '@/components/ui';
 import { dayKey, dayStreak } from '@/lib/calendar';
@@ -19,19 +19,22 @@ import { useFocusData } from '@/lib/use-focus-data';
 type PressState = PressableStateCallbackType & { hovered?: boolean };
 
 /** The start page: a welcome, this week at a glance, training progress and the workout history. */
+const AVATAR = 52;
+
 export default function OverviewTab() {
   const desktop = useIsDesktop();
   const [data] = useFocusData(async (db) => {
     const today = dayKey(Date.now());
-    const [name, workouts, rest, food, water, goals] = await Promise.all([
+    const [name, photo, workouts, rest, food, water, goals] = await Promise.all([
       getSetting(db, 'profile_name', ''),
+      getSetting(db, 'profile_photo', ''),
       listFinishedWorkouts(db),
       listRestDays(db),
       dailyTotals(db, today, today),
       dayWater(db, today),
       getGoals(db),
     ]);
-    return { name: name.trim(), workouts, rest, kcal: food.get(today)?.kcal ?? 0, water, goals };
+    return { name: name.trim(), photo, workouts, rest, kcal: food.get(today)?.kcal ?? 0, water, goals };
   });
 
   const workouts = data?.workouts ?? [];
@@ -51,13 +54,9 @@ export default function OverviewTab() {
 
   const welcome = (
     <View style={styles.welcome}>
-      <LinearGradient colors={['#22D3EE', '#0E7490']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
-        {first ? (
-          <Text style={styles.avatarText}>{first[0].toUpperCase()}</Text>
-        ) : (
-          <Ionicons name="person" size={22} color={C.onAccent} />
-        )}
-      </LinearGradient>
+      <Pressable onPress={() => router.push('/profile')} accessibilityRole="button" accessibilityLabel="Your profile">
+        <Avatar photo={data?.photo ?? ''} name={first} size={AVATAR} />
+      </Pressable>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={text.title} numberOfLines={1}>
           {greeting()}
@@ -222,8 +221,6 @@ function Glance({
 
 const styles = StyleSheet.create({
   welcome: { flexDirection: 'row', alignItems: 'center', gap: S.md, marginTop: S.xs },
-  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: C.onAccent, fontFamily: F.display, fontSize: 22 },
   glance: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
   glanceCard: {
     flexGrow: 1,

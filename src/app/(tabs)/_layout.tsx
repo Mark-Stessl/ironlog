@@ -1,7 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router/js-tabs';
+import { Platform } from 'react-native';
 
 import { C, F, useIsDesktop } from '@/lib/theme';
+
+/** Room under the tab bar for the home-screen swipe bar. */
+const HOME_BAR = 22;
 
 export default function TabsLayout() {
   // On desktop the sidebar (root layout) replaces the bottom tab bar.
@@ -13,7 +17,14 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: C.bg },
         tabBarStyle: desktop
           ? { display: 'none' }
-          : { backgroundColor: C.bg, borderTopColor: C.border, borderTopWidth: 1, height: 58, paddingTop: 4 },
+          : {
+              backgroundColor: C.bg,
+              borderTopColor: C.border,
+              borderTopWidth: 1,
+              paddingTop: 4,
+              // Web app on the phone: keep the tabs clear of the iPhone's swipe-home bar.
+              ...(Platform.OS === 'web' ? { height: 58 + HOME_BAR, paddingBottom: HOME_BAR } : { height: 58 }),
+            },
         tabBarActiveTintColor: C.accent,
         tabBarInactiveTintColor: C.textFaint,
         tabBarLabelStyle: { fontFamily: F.medium, fontSize: 10 },
