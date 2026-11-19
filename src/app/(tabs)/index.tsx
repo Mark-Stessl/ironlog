@@ -8,10 +8,11 @@ import { Avatar } from '@/components/avatar';
 import { ProgressChart } from '@/components/progress-chart';
 import { Card, Empty, ListCard, ListRow, Page, SectionTitle, text, type IconName } from '@/components/ui';
 import { dayKey, dayStreak } from '@/lib/calendar';
-import { getSetting, listFinishedWorkouts, listRestDays } from '@/lib/db';
+import { getSetting, listFinishedWorkouts, listRestDays, recordRows } from '@/lib/db';
 import { dailyTotals, dayWater, getGoals } from '@/lib/food-db';
 import { fmtDate, fmtDurationShort, fmtVolume } from '@/lib/format';
 import { greeting, motivation } from '@/lib/greeting';
+import { latestRecords, recordBook, type RecordEvent } from '@/lib/records';
 import { weeklyTotals, weekStart } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
@@ -34,7 +35,8 @@ export default function OverviewTab() {
       dayWater(db, today),
       getGoals(db),
     ]);
-    return { name: name.trim(), photo, workouts, rest, kcal: food.get(today)?.kcal ?? 0, water, goals };
+    const fresh = latestRecords(recordBook(await recordRows(db)).events);
+    return { name: name.trim(), photo, fresh, workouts, rest, kcal: food.get(today)?.kcal ?? 0, water, goals };
   });
 
   const workouts = data?.workouts ?? [];
@@ -169,6 +171,7 @@ export default function OverviewTab() {
   return (
     <Page topInset maxWidth={1100}>
       {welcome}
+      {data?.fresh && data.fresh.date >= Date.now() - 7 * 86_400_000 ? <NewRecords {...data.fresh} /> : null}
       {glance}
       {desktop ? (
         <View style={styles.columns}>
@@ -182,6 +185,33 @@ export default function OverviewTab() {
         </>
       )}
     </Page>
+  );
+}
+
+/** Records broken in your latest workout (shown for a week). */
+function NewRecords({ workout, items }: { workout: string; items: RecordEvent[] }) {
+  const names = [...new Set(items.map((e) => e.name))];
+  return (
+    <Animated.View entering={FadeInDown.duration(300)}>
+      <Pressable
+        onPress={() => router.push('/records')}
+        accessibilityRole="button"
+        accessibilityLabel={`${items.length} new records in ${workout}`}
+        style={({ pressed }) => [styles.newRecords, pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] }]}>
+        <View style={styles.newRecordsIcon}>
+          <Ionicons name="trophy" size={18} color={C.gold} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[text.strong, { color: C.gold }]} numberOfLines={1}>
+            {items.length === 1 ? 'New record' : `${items.length} new records`} in {workout}
+          </Text>
+          <Text style={text.faint} numberOfLines={1}>
+            {items.length === 1 ? `${items[0].name} · ${items[0].title}` : names.join(', ')}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={C.gold} />
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -222,6 +252,25 @@ function Glance({
 const styles = StyleSheet.create({
   welcome: { flexDirection: 'row', alignItems: 'center', gap: S.md, marginTop: S.xs },
   glance: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
+  newRecords: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.md,
+    padding: S.md,
+    marginBottom: S.sm,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(233,190,88,0.45)',
+    backgroundColor: 'rgba(233,190,88,0.08)',
+  },
+  newRecordsIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(233,190,88,0.16)',
+  },
   glanceCard: {
     flexGrow: 1,
     flexBasis: '22%',

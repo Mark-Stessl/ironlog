@@ -1030,3 +1030,39 @@ test('strength chart series', async () => {
   assert.equal(strengthChange(e, 0), 8);
   assert.equal(strengthChange(e, 150), null);
 });
+
+test('record book: bests per exercise and when records were broken', async () => {
+  const { recordBook } = await import('../src/lib/records');
+  const row = (exercise_id: number, workout_id: number, date: number, w: number | null, r: number | null, extra = {}) => ({
+    exercise_id,
+    name: exercise_id === 1 ? 'Bench' : 'Treadmill',
+    equipment: 'Barbell',
+    track: exercise_id === 1 ? 'weight_reps' : 'time_distance',
+    workout_id,
+    workout_name: `W${workout_id}`,
+    date,
+    weight: w,
+    reps: r,
+    seconds: null,
+    distance: null,
+    ...extra,
+  });
+  const { bests, events } = recordBook([
+    row(1, 1, 100, 60, 8),
+    row(1, 1, 100, 65, 5),
+    row(2, 1, 100, null, null, { seconds: 1200, distance: 3 }),
+    row(1, 2, 200, 70, 3),
+    row(1, 2, 200, 70, 5),
+    row(2, 2, 200, null, null, { seconds: 1500, distance: 2.5 }),
+  ]);
+  const bench = bests.find((b) => b.name === 'Bench')!;
+  assert.deepEqual(bench.heaviest, { weight: 70, reps: 5, date: 200 });
+  assert.equal(bench.sessions, 2);
+  const tread = bests.find((b) => b.name === 'Treadmill')!;
+  assert.deepEqual([tread.longest?.seconds, tread.farthest?.distance], [1500, 3]);
+  // Workout 1 is the first time: no records. Workout 2: heavier bench, longer run (not farther).
+  assert.ok(events.every((e) => e.workout_id === 2));
+  assert.ok(events.some((e) => e.name === 'Bench' && e.kind === 'weight'));
+  assert.ok(events.some((e) => e.name === 'Treadmill' && e.kind === 'time'));
+  assert.ok(!events.some((e) => e.kind === 'distance'));
+});

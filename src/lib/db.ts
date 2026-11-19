@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { CARDIO_EXERCISES, SEED_EXERCISES } from './exercise-data';
 import { defaultWorkoutName, est1RM } from './format';
-import { addToBest, NO_BEST, type Best } from './records';
+import { addToBest, NO_BEST, type Best, type RecordRow } from './records';
 import type { PlanItem } from './routine-diff';
 import { FOOD_SCHEMA } from './food-db';
 import type { StatSet } from './stats';
@@ -835,6 +835,20 @@ export async function profileTotals(db: SQLiteDatabase): Promise<ProfileTotals> 
     sets: s?.sets ?? 0,
     volume: s?.volume ?? 0,
   };
+}
+
+/** Every completed working set of finished workouts, oldest first (for the record book). */
+export function recordRows(db: SQLiteDatabase): Promise<RecordRow[]> {
+  return db.getAllAsync<RecordRow>(
+    `SELECT e.id AS exercise_id, e.name, e.equipment, e.track, w.id AS workout_id, w.name AS workout_name,
+            w.finished_at AS date, s.weight, s.reps, s.seconds, s.distance
+     FROM sets s
+     JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN workouts w ON w.id = we.workout_id
+     JOIN exercises e ON e.id = we.exercise_id
+     WHERE s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL
+     ORDER BY w.finished_at, w.id, we.position, s.position`,
+  );
 }
 
 export type CalendarWorkout = {

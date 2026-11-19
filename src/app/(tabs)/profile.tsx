@@ -17,6 +17,7 @@ import {
   getSetting,
   latestMeasurements,
   listExercises,
+  recordRows,
   listMeasurements,
   listRestDays,
   profileTotals,
@@ -27,7 +28,8 @@ import {
 } from '@/lib/db';
 import { fmtMeasure, WEIGHT } from '@/lib/measures';
 import { dailyTotals, getGoals, waterBetween } from '@/lib/food-db';
-import { fmtDurationShort, fmtVolume } from '@/lib/format';
+import { fmtAgo, fmtDurationShort, fmtVolume, plural } from '@/lib/format';
+import { groupRecords, recordBook } from '@/lib/records';
 import { nutritionSummary, weightChange } from '@/lib/overview';
 import { GROUPS, heat, muscleStats, periodRange, type Period } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
@@ -86,10 +88,16 @@ export default function ProfileTab() {
     ]);
     const lastBackup = Number(await getSetting(db, 'last_backup', '0')) || null;
     const photo = await getSetting(db, 'profile_photo', '');
+    const book = recordBook(await recordRows(db));
     const streak = dayStreak(new Set([...workouts.map((w) => dayKey(w.started_at)), ...rest]));
     return {
       name,
       photo,
+      records: {
+        count: book.events.length,
+        latest: groupRecords(book.events).slice(0, 3),
+        exercises: book.bests.length,
+      },
       totals,
       exercises: exercises.length,
       weight: latest[WEIGHT.key]?.value,
@@ -132,6 +140,7 @@ export default function ProfileTab() {
               href="/measures"
             />
           </View>
+          <RecordsCard {...profile.records} />
         </>
       ) : null}
 
@@ -393,6 +402,57 @@ function Total({
   );
 }
 
+/** Personal records: how many, and the latest ones. Opens the records page. */
+function RecordsCard({
+  count,
+  latest,
+  exercises,
+}: {
+  count: number;
+  latest: ReturnType<typeof groupRecords>;
+  exercises: number;
+}) {
+  return (
+    <Pressable
+      onPress={() => router.push('/records')}
+      accessibilityRole="button"
+      accessibilityLabel={`Personal records, ${count}`}
+      style={(s: PressState) => [
+        styles.records,
+        s.hovered && { backgroundColor: 'rgba(233,190,88,0.1)' },
+        s.pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+      ]}>
+      <View style={styles.recordsHead}>
+        <View style={styles.recordsIcon}>
+          <Ionicons name="trophy" size={17} color={C.gold} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={text.strong}>Personal records</Text>
+          <Text style={text.faint} numberOfLines={1}>
+            {count
+              ? `${plural(count, 'record')} broken · bests for ${plural(exercises, 'exercise')}`
+              : exercises
+                ? `Bests for ${plural(exercises, 'exercise')} · beat one for a record`
+                : 'Your best lifts show up after your first workout'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={C.textFaint} />
+      </View>
+      {latest.map((e) => (
+        <View key={e.key} style={styles.recordLine}>
+          <Text style={[text.body, { flex: 1, minWidth: 0, fontFamily: F.semi }]} numberOfLines={1}>
+            {e.name}
+          </Text>
+          <Text style={[text.body, { color: C.gold }]} numberOfLines={1}>
+            {e.kinds.join(' + ')}
+          </Text>
+          <Text style={[text.faint, { minWidth: 62, textAlign: 'right' }]}>{fmtAgo(e.date)}</Text>
+        </View>
+      ))}
+    </Pressable>
+  );
+}
+
 function Shortcut({ icon, label, sub, href }: { icon: IconName; label: string; sub: string; href: Href }) {
   return (
     <Pressable
@@ -481,6 +541,25 @@ const styles = StyleSheet.create({
     marginTop: S.xs,
     marginBottom: S.sm,
   },
+  records: {
+    gap: S.sm,
+    marginTop: S.sm,
+    padding: S.md,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(233,190,88,0.4)',
+    backgroundColor: 'rgba(233,190,88,0.06)',
+  },
+  recordsHead: { flexDirection: 'row', alignItems: 'center', gap: S.md },
+  recordsIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: R.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(233,190,88,0.14)',
+  },
+  recordLine: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingLeft: 46 },
   cameraBadge: {
     position: 'absolute',
     right: -2,

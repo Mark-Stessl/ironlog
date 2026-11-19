@@ -91,3 +91,21 @@ export function defaultWorkoutName(now: Date): string {
 export function plural(n: number, word: string): string {
   return `${n} ${n === 1 ? word : `${word}s`}`;
 }
+
+/** Short date for lists: "Today", "Yesterday", "3 days ago", then "Nov 19". */
+export function fmtAgo(ms: number, now = Date.now()): string {
+  const day = (t: number) => {
+    const d = new Date(t);
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000;
+  };
+  const diff = day(now) - day(ms);
+  if (diff <= 0) return 'Today';
+  if (diff === 1) return 'Yesterday';
+  if (diff < 7) return `${diff} days ago`;
+  const d = new Date(ms);
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() !== new Date(now).getFullYear() ? { year: 'numeric' } : {}),
+  });
+}
