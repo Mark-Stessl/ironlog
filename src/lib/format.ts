@@ -17,6 +17,32 @@ export function fmtSet(weight: number | null, reps: number | null): string {
   return `${fmtWeight(weight)} kg × ${reps}`;
 }
 
+/** Cardio time: "25 min" or "25:30". */
+export function fmtCardioTime(seconds: number | null | undefined): string {
+  if (!seconds) return '';
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  if (m >= 60) return `${Math.floor(m / 60)} h ${m % 60} min`;
+  return s ? `${m}:${String(s).padStart(2, '0')}` : `${m} min`;
+}
+
+/** Seconds as the minutes you type in, e.g. 1530 s -> "25.5". */
+export function minutesText(seconds: number | null | undefined): string {
+  if (seconds == null) return '';
+  return fmtWeight(Math.round((seconds / 60) * 100) / 100);
+}
+
+/** A cardio set for lists: "25 min · 3.2 km" or "12 min · 40 floors". */
+export function fmtCardio(
+  seconds: number | null | undefined,
+  distance: number | null | undefined,
+  floors: boolean,
+): string {
+  const parts = [fmtCardioTime(seconds)];
+  if (distance) parts.push(floors ? `${fmtWeight(distance)} floors` : `${fmtWeight(distance)} km`);
+  return parts.filter(Boolean).join(' · ') || '—';
+}
+
 /** Estimated one-rep max (Epley). */
 export function est1RM(weight: number, reps: number): number {
   if (reps <= 0) return 0;

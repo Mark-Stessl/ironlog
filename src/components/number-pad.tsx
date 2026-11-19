@@ -1,9 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import Animated, {
+  SlideInDown,
+  SlideOutDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PlateCalculator, PlateHint } from '@/components/plate-calculator';
+import { fmtWeight, parseNum } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { C, F, R, S } from '@/lib/theme';
 
@@ -16,6 +26,10 @@ export type PadTarget = {
   onChange: (v: string) => void;
   /** Moves to the next field (kg -> reps); leave out on the last one. */
   next?: () => void;
+  /** Runs when Done is pressed on the last field (ticks the set off). */
+  onDone?: () => void;
+  /** A barbell weight: the keypad shows the plates for each side as you type. */
+  plates?: boolean;
 };
 
 type Pad = { open: (t: PadTarget) => void; close: () => void; activeKey: string | null; enabled: boolean };
@@ -86,13 +100,42 @@ export function NumberPadProvider({ children }: { children: ReactNode }) {
   return (
     <PadContext.Provider value={{ open, close, activeKey: target?.key ?? null, enabled }}>
       {children}
-      {target ? <Keys target={target} onKey={press} onClose={close} /> : null}
+      {target ? <Keys target={target} onKey={press} onSet={update} onClose={close} /> : null}
     </PadContext.Provider>
   );
 }
 
-function Keys({ target, onKey, onClose }: { target: PadTarget; onKey: (k: string) => void; onClose: () => void }) {
+function Keys({
+  target,
+  onKey,
+  onSet,
+  onClose,
+}: {
+  target: PadTarget;
+  onKey: (k: string) => void;
+  onSet: (v: string) => void;
+  onClose: () => void;
+}) {
   const insets = useSafeAreaInsets();
+  const [plates, setPlates] = useState(false);
+
+  // Pull the keypad down to put it away.
+  const drop = useSharedValue(0);
+  const swipe = usePanGesture({
+    activeOffsetY: [-10000, 10],
+    failOffsetX: [-20, 20],
+    runOnJS: true,
+    onUpdate: (e) => {
+      drop.value = Math.max(0, e.translationY);
+    },
+    onDeactivate: (e) => {
+      if (drop.value > 70 || e.velocityY > 700) {
+        drop.value = withTiming(420, { duration: 160 });
+        setTimeout(onClose, 150);
+      } else drop.value = withSpring(0, { damping: 20, stiffness: 260 });
+    },
+  });
+  const dropStyle = useAnimatedStyle(() => ({ transform: [{ translateY: drop.value }] }));
   const rows: [string, string, string][] = [
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -104,61 +147,76 @@ function Keys({ target, onKey, onClose }: { target: PadTarget; onKey: (k: string
     { k: '+', icon: 'add', label: '1' },
   ];
   return (
-    <Animated.View
-      entering={SlideInDown.springify().damping(20).stiffness(220)}
-      exiting={SlideOutDown.duration(160)}
-      style={[styles.pad, { paddingBottom: Math.max(insets.bottom, 10) + BOTTOM_GAP }]}>
-      <View style={styles.bar}>
-        <Text style={styles.barLabel} numberOfLines={1}>
-          {target.label}
-        </Text>
-        <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Hide keypad" style={styles.hide}>
-          <Ionicons name="chevron-down" size={20} color={C.textDim} />
-        </Pressable>
-      </View>
-      <View style={styles.grid}>
-        <View style={{ flex: 3, gap: 6 }}>
-          {rows.map((r, i) => (
-            <View key={i} style={styles.row}>
-              {r.map((k, j) =>
-                k ? (
-                  <Key key={j} onPress={() => onKey(k)} label={k === 'del' ? 'Delete' : k}>
-                    {k === 'del' ? (
-                      <Ionicons name="backspace-outline" size={22} color={C.text} />
-                    ) : (
-                      <Text style={styles.keyText}>{k}</Text>
-                    )}
-                  </Key>
-                ) : (
-                  <View key={j} style={{ flex: 1 }} />
-                ),
-              )}
-            </View>
-          ))}
+    <GestureDetector gesture={swipe} touchAction="none">
+      <Animated.View
+        entering={SlideInDown.springify().damping(20).stiffness(220)}
+        exiting={SlideOutDown.duration(160)}
+        style={[styles.pad, { paddingBottom: Math.max(insets.bottom, 10) + BOTTOM_GAP }, dropStyle]}>
+        <View style={styles.grabber} />
+        <View style={styles.bar}>
+          <Text style={styles.barLabel} numberOfLines={1}>
+            {target.label}
+          </Text>
+          {target.plates ? <PlateHint kg={parseNum(target.value)} onOpen={() => setPlates(true)} /> : null}
+          <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Hide keypad" style={styles.hide}>
+            <Ionicons name="chevron-down" size={20} color={C.textDim} />
+          </Pressable>
         </View>
-        <View style={{ flex: 1, gap: 6 }}>
-          {side.map((s) => (
-            <Key key={s.k} onPress={() => onKey(s.k)} label={s.k === '+' ? 'Plus 1' : 'Minus 1'} muted>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name={s.icon!} size={16} color={C.text} />
-                <Text style={[styles.keyText, { fontSize: 17 }]}>{s.label}</Text>
+        <View style={styles.grid}>
+          <View style={{ flex: 3, gap: 6 }}>
+            {rows.map((r, i) => (
+              <View key={i} style={styles.row}>
+                {r.map((k, j) =>
+                  k ? (
+                    <Key key={j} onPress={() => onKey(k)} label={k === 'del' ? 'Delete' : k}>
+                      {k === 'del' ? (
+                        <Ionicons name="backspace-outline" size={22} color={C.text} />
+                      ) : (
+                        <Text style={styles.keyText}>{k}</Text>
+                      )}
+                    </Key>
+                  ) : (
+                    <View key={j} style={{ flex: 1 }} />
+                  ),
+                )}
               </View>
+            ))}
+          </View>
+          <View style={{ flex: 1, gap: 6 }}>
+            {side.map((s) => (
+              <Key key={s.k} onPress={() => onKey(s.k)} label={s.k === '+' ? 'Plus 1' : 'Minus 1'} muted>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name={s.icon!} size={16} color={C.text} />
+                  <Text style={[styles.keyText, { fontSize: 17 }]}>{s.label}</Text>
+                </View>
+              </Key>
+            ))}
+            <Key
+              onPress={() => {
+                haptic.tap();
+                if (target.next) return target.next();
+                onClose();
+                target.onDone?.();
+              }}
+              label={target.next ? 'Next field' : 'Done'}
+              accent
+              tall>
+              <Text style={[styles.keyText, { color: C.onAccent, fontSize: 15 }]}>{target.next ? 'Next' : 'Done'}</Text>
             </Key>
-          ))}
-          <Key
-            onPress={() => {
-              haptic.tap();
-              if (target.next) target.next();
-              else onClose();
-            }}
-            label={target.next ? 'Next field' : 'Done'}
-            accent
-            tall>
-            <Text style={[styles.keyText, { color: C.onAccent, fontSize: 15 }]}>{target.next ? 'Next' : 'Done'}</Text>
-          </Key>
+          </View>
         </View>
-      </View>
-    </Animated.View>
+        {plates ? (
+          <PlateCalculator
+            initial={parseNum(target.value)}
+            onClose={() => setPlates(false)}
+            onUse={(kg) => {
+              setPlates(false);
+              onSet(fmtWeight(kg));
+            }}
+          />
+        ) : null}
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -218,7 +276,8 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
   },
-  bar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: S.sm, height: 34 },
+  grabber: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: C.borderHi, marginBottom: 2 },
+  bar: { flexDirection: 'row', alignItems: 'center', gap: S.sm, paddingHorizontal: S.sm, height: 36 },
   barLabel: { flex: 1, color: C.textDim, fontFamily: F.semi, fontSize: 13 },
   hide: { width: 36, height: 30, alignItems: 'center', justifyContent: 'center' },
   grid: { flexDirection: 'row', gap: 6, maxWidth: 520, width: '100%', alignSelf: 'center' },

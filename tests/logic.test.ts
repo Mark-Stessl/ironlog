@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 
 import * as dbm from '../src/lib/db';
-import { SEED_EXERCISES } from '../src/lib/exercise-data';
+import { CARDIO_EXERCISES, SEED_EXERCISES } from '../src/lib/exercise-data';
 import { est1RM, fmtDuration, fmtSet, parseNum } from '../src/lib/format';
 import { searchExercises, type Searchable } from '../src/lib/search';
 
@@ -94,6 +94,25 @@ test('format helpers', () => {
   assert.equal(fmtDuration(3_725_000), '1:02:05');
 });
 
+test('database: cardio sets keep time and distance, and add no volume', async () => {
+  const db = fakeDb();
+  await dbm.migrate(db);
+  const tread = (await dbm.listExercises(db)).find((e) => e.name === 'Treadmill')!;
+  assert.equal(tread.track, 'time_distance');
+  assert.equal((await dbm.listExercises(db)).find((e) => e.name === 'Stair Climber')!.track, 'time_floors');
+  const id = await dbm.startWorkout(db);
+  await dbm.addExerciseToWorkout(db, id, tread.id);
+  const ex = (await dbm.getWorkoutDetail(db, id))!.exercises[0];
+  assert.equal(ex.track, 'time_distance');
+  await dbm.updateSet(db, ex.sets[0].id, { weight: null, reps: null, seconds: 1530, distance: 3.2, done: true });
+  await dbm.addSet(db, ex.id);
+  const sets = (await dbm.getWorkoutDetail(db, id))!.exercises[0].sets;
+  assert.deepEqual([sets[0].seconds, sets[0].distance, sets[1].seconds, sets[1].distance], [1530, 3.2, 1530, 3.2]);
+  assert.equal(await dbm.finishWorkout(db, id), true);
+  const hist = await dbm.getExerciseHistory(db, tread.id);
+  assert.equal(hist[0].sets[0].distance, 3.2);
+});
+
 test('database: full workout flow', async (t) => {
   // Freeze the clock so both workouts finish in the same millisecond (the hardest case for ordering).
   t.mock.timers.enable({ apis: ['Date'], now: 1_800_000_000_000 });
@@ -101,7 +120,7 @@ test('database: full workout flow', async (t) => {
   await dbm.migrate(db);
   await dbm.migrate(db); // running twice must be harmless
   const all = await dbm.listExercises(db);
-  assert.equal(all.length, SEED_EXERCISES.length);
+  assert.equal(all.length, SEED_EXERCISES.length + CARDIO_EXERCISES.length);
   const press = all.find((e) => e.name === 'Chest Press (Machine)')!;
   const row = all.find((e) => e.name === 'Seated Cable Row')!;
 
@@ -144,7 +163,7 @@ test('database: full workout flow', async (t) => {
   d = (await dbm.getWorkoutDetail(db, w2))!;
   assert.equal(d.workout.name, hist[0].name);
   assert.equal(d.exercises[0].sets.length, 2);
-  assert.deepEqual(d.exercises[0].previous.map((p) => ({ ...p })), [
+  assert.deepEqual(d.exercises[0].previous.map(({ weight, reps, kind }) => ({ weight, reps, kind })), [
     { weight: 60, reps: 8, kind: 'normal' },
     { weight: 62.5, reps: 6, kind: 'normal' },
   ]);
@@ -854,7 +873,7 @@ test('backup: export, check and restore everything', async () => {
 
   const backup = await bk.createBackup(db);
   assert.equal(backup.app, 'ironlog');
-  assert.equal(backup.version, 7);
+  assert.equal(backup.version, 8);
   assert.deepEqual(bk.summarize(backup), { workouts: 1, foodDays: 1, measurements: 1, recipes: 0, photos: 0 });
   const text = JSON.stringify(backup);
   assert.match(bk.backupFileName(new Date(2026, 10, 8)), /^ironlog-backup-2026-11-08\.json$/);
@@ -863,7 +882,7 @@ test('backup: export, check and restore everything', async () => {
   const db2 = fakeDb();
   await dbm.migrate(db2);
   await dbm.setSetting(db2, 'profile_name', 'Someone else');
-  await bk.restoreBackup(db2, bk.parseBackup(text, 7));
+  await bk.restoreBackup(db2, bk.parseBackup(text, 8));
   assert.equal(await dbm.getSetting(db2, 'profile_name', ''), 'Mark');
   assert.equal((await fdb.dayLog(db2, '2026-11-18')).length, 1);
   assert.equal(await fdb.dayWater(db2, '2026-11-18'), 500);

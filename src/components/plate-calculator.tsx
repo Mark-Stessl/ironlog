@@ -35,13 +35,11 @@ export function PlateButton({ weight }: { weight: number | null }) {
   );
 }
 
-function PlateCalculator({ initial, onClose }: { initial: number | null; onClose: () => void }) {
+/** The bar and the plates you have, remembered between workouts. */
+function useGymPlates() {
   const db = useSQLiteContext();
-  const [weightText, setWeightText] = useState(initial ? fmtWeight(initial) : '60');
   const [bar, setBar] = useState(20);
   const [have, setHave] = useState<number[]>([...ALL_PLATES]);
-
-  // Bar and plates you have are remembered.
   useEffect(() => {
     (async () => {
       setBar(Number(await getSetting(db, 'plate_bar', '20')) || 20);
@@ -55,9 +53,66 @@ function PlateCalculator({ initial, onClose }: { initial: number | null; onClose
         );
     })();
   }, [db]);
+  return { db, bar, setBar, have, setHave };
+}
+
+/**
+ * Small live hint in the keypad while typing a barbell weight: the plates for one
+ * side as coloured dots. Tap it for the full calculator.
+ */
+export function PlateHint({ kg, onOpen }: { kg: number | null; onOpen: () => void }) {
+  const { bar, have } = useGymPlates();
+  const r = platesFor(kg ?? 0, bar, have);
+  const label = !kg
+    ? 'Plates'
+    : kg <= bar
+      ? 'Bar only'
+      : r.exact
+        ? describePlates(r.perSide)
+        : `≈ ${fmtWeight(r.below)} kg`;
+  return (
+    <Pressable
+      onPress={onOpen}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={`Plates per side: ${label}. Open plate calculator`}
+      style={({ pressed }) => [styles.hint, pressed && { opacity: 0.7 }]}>
+      {kg && kg > bar ? (
+        <View style={styles.hintDots}>
+          {r.perSide.slice(0, 6).map((p, i) => (
+            <View
+              key={i}
+              style={[styles.hintDot, { backgroundColor: PLATE_COLOR[p], height: p >= 15 ? 16 : p >= 5 ? 12 : 9 }]}
+            />
+          ))}
+        </View>
+      ) : (
+        <Ionicons name="disc-outline" size={14} color={C.accent} />
+      )}
+      <Text style={styles.hintText} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+export function PlateCalculator({
+  initial,
+  onClose,
+  onUse,
+}: {
+  initial: number | null;
+  onClose: () => void;
+  /** Shows a button to put the weight into the set. */
+  onUse?: (kg: number) => void;
+}) {
+  const { db, bar, setBar, have, setHave } = useGymPlates();
+  const [weightText, setWeightText] = useState(initial ? fmtWeight(initial) : '60');
 
   const target = parseNum(weightText) ?? 0;
   const r = platesFor(target, bar, have);
+  // A weight that can't be loaded exactly is rounded down to one that can.
+  const useKg = r.exact || target <= bar ? Math.max(0, target) : r.below;
   const step = (d: number) => {
     haptic.tap();
     setWeightText(fmtWeight(Math.max(0, Math.round((target + d) * 100) / 100)));
@@ -157,6 +212,14 @@ function PlateCalculator({ initial, onClose }: { initial: number | null; onClose
               );
             })}
           </View>
+          {onUse ? (
+            <Pressable
+              onPress={() => onUse(useKg)}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.use, pressed && { opacity: 0.8 }]}>
+              <Text style={styles.useText}>Use {fmtWeight(useKg)} kg for this set</Text>
+            </Pressable>
+          ) : null}
         </Animated.View>
       </View>
     </Modal>
@@ -195,6 +258,30 @@ function BarDrawing({ perSide }: { perSide: number[] }) {
 }
 
 const styles = StyleSheet.create({
+  hint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '58%',
+    paddingHorizontal: 10,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
+  hintDots: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  hintDot: { width: 5, borderRadius: 1.5 },
+  hintText: { color: C.text, fontFamily: F.semi, fontSize: 12, flexShrink: 1 },
+  use: {
+    marginTop: S.sm,
+    height: 46,
+    borderRadius: R.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.accent,
+  },
+  useText: { color: C.onAccent, fontFamily: F.semi, fontSize: 15 },
   button: {
     flexDirection: 'row',
     alignItems: 'center',

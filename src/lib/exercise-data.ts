@@ -13,6 +13,7 @@ export const MUSCLES = [
   'Glutes',
   'Calves',
   'Core',
+  'Cardio',
 ] as const;
 
 export const EQUIPMENT = [
@@ -27,6 +28,23 @@ export const EQUIPMENT = [
 ] as const;
 
 export type SeedExercise = readonly [name: string, muscle: string, equipment: string, aliases: string];
+
+/** Cardio machines: [name, equipment, what a set records, aliases]. */
+export const CARDIO_EXERCISES: readonly (readonly [
+  name: string,
+  equipment: string,
+  track: 'time_distance' | 'time_floors',
+  aliases: string,
+])[] = [
+  ['Treadmill', 'Machine', 'time_distance', 'Laufband, running, walking, laufen, gehen, incline walk'],
+  ['Stationary Bike', 'Machine', 'time_distance', 'Fahrrad, Ergometer, Heimtrainer, Radfahren, cycling, bike'],
+  ['Spin Bike', 'Machine', 'time_distance', 'Spinning, Indoor Cycling, Fahrrad'],
+  ['Stair Climber', 'Machine', 'time_floors', 'Stairmaster, Stepmill, Treppensteiger, Stepper, stairs'],
+  ['Elliptical', 'Machine', 'time_distance', 'Crosstrainer, cross trainer'],
+  ['Rowing Machine', 'Machine', 'time_distance', 'Rudergerät, Ruderergometer, Concept2, erg'],
+  ['Running (Outdoor)', 'Other', 'time_distance', 'Laufen, Joggen, run, jogging'],
+  ['Cycling (Outdoor)', 'Other', 'time_distance', 'Radfahren, Fahrrad, bike ride'],
+];
 
 export const SEED_EXERCISES: SeedExercise[] = [
   // ── Chest ─────────────────────────────────────────────

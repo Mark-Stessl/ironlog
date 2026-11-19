@@ -74,13 +74,25 @@ import {
   getRoutine,
   type PrevSet,
   type SetKind,
+  type SetPatch,
   type SetRow,
+  type Track,
   type WorkoutDetail,
   type WorkoutExercise,
 } from '@/lib/db';
 import { choose, confirm, info, notify } from '@/lib/dialog';
 import { describeDiff, diffRoutine, hasChanges } from '@/lib/routine-diff';
-import { fmtDate, fmtDurationShort, fmtSet, fmtVolume, fmtWeight, parseNum, plural } from '@/lib/format';
+import {
+  fmtCardio,
+  fmtDate,
+  fmtDurationShort,
+  fmtSet,
+  fmtVolume,
+  fmtWeight,
+  minutesText,
+  parseNum,
+  plural,
+} from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { currentPRs, markPRs, PR_LABEL, type PR } from '@/lib/records';
 import { sound } from '@/lib/sound';
@@ -168,7 +180,7 @@ function ActiveWorkout({
   };
 
   /** Saves a set and updates it on screen without reloading everything. */
-  const patchSet = (set: SetRow, patch: { weight: number | null; reps: number | null; done: boolean }) => {
+  const patchSet = (set: SetRow, patch: SetPatch) => {
     save(() => updateSet(db, set.id, patch));
     edits.current += 1;
     setDetail((prev) =>
@@ -196,7 +208,8 @@ function ActiveWorkout({
         : [];
       if (ex && prs.length) celebrate(ex.name, prs);
       else haptic.tap(); // no sound for a normal set, only a light tap
-      if (restSeconds > 0)
+      // No rest timer after a cardio set.
+      if (restSeconds > 0 && (ex?.track ?? 'weight_reps') === 'weight_reps')
         setRest({ id: Date.now(), endAt: Date.now() + restSeconds * 1000, total: restSeconds * 1000, label: ex?.name });
     }
   };
@@ -503,7 +516,7 @@ function ExerciseCard({
   ex: WorkoutExercise;
   onNotes: (notes: string) => void;
   onSetKind: (setId: number, kind: SetKind) => void;
-  onPatchSet: (set: SetRow, patch: { weight: number | null; reps: number | null; done: boolean }) => void;
+  onPatchSet: (set: SetRow, patch: SetPatch) => void;
   onAddSet: () => void;
   onDeleteSet: (setId: number) => void;
   onRemove: () => void;
@@ -581,8 +594,12 @@ function ExerciseCard({
             <View style={styles.setRow}>
               <Text style={[styles.colHead, styles.colNum]}>Set</Text>
               <Text style={[styles.colHead, { flex: 1 }]}>Previous</Text>
-              <Text style={[styles.colHead, styles.colInput]}>kg</Text>
-              <Text style={[styles.colHead, styles.colInput]}>Reps</Text>
+              <Text style={[styles.colHead, styles.colInput]}>
+                {ex.track && ex.track !== 'weight_reps' ? 'Min' : 'kg'}
+              </Text>
+              <Text style={[styles.colHead, styles.colInput]}>
+                {ex.track === 'time_floors' ? 'Floors' : ex.track === 'time_distance' ? 'km' : 'Reps'}
+              </Text>
               <View style={styles.colCheck} />
             </View>
 
@@ -598,6 +615,8 @@ function ExerciseCard({
                 exercise={ex.name}
                 onPatch={(patch) => onPatchSet(set, patch)}
                 onDelete={() => onDeleteSet(set.id)}
+                track={ex.track ?? 'weight_reps'}
+                barbell={usesBarbell(ex.equipment, ex.name)}
               />
             ))}
 
@@ -619,6 +638,8 @@ function SetLine({
   exercise,
   onPatch,
   onDelete,
+  track,
+  barbell,
 }: {
   set: SetRow;
   index: number;
@@ -628,11 +649,30 @@ function SetLine({
   prev: PrevSet | undefined;
   prs: PR[];
   exercise: string;
-  onPatch: (patch: { weight: number | null; reps: number | null; done: boolean }) => void;
+  onPatch: (patch: SetPatch) => void;
   onDelete: () => void;
+  track: Track;
+  /** Barbell exercise: the kg keypad shows the plates. */
+  barbell: boolean;
 }) {
-  const [weightText, setWeightText] = useState(fmtWeight(set.weight));
-  const [repsText, setRepsText] = useState(set.reps == null ? '' : String(set.reps));
+  // Two fields per set: kg and reps, or for cardio minutes and km / floors.
+  const cardio = track !== 'weight_reps';
+  const floors = track === 'time_floors';
+  const fieldA = (x: { weight?: number | null; seconds?: number | null } | undefined) =>
+    cardio ? minutesText(x?.seconds) : fmtWeight(x?.weight);
+  const fieldB = (x: { reps?: number | null; distance?: number | null } | undefined) =>
+    cardio ? fmtWeight(x?.distance) : x?.reps == null ? '' : String(x.reps);
+  const patchOf = (a: string, b: string, isDone: boolean): SetPatch => {
+    if (!cardio) return { weight: parseNum(a), reps: parseNum(b), done: isDone };
+    const min = parseNum(a);
+    return { weight: null, reps: null, seconds: min == null ? null : min * 60, distance: parseNum(b), done: isDone };
+  };
+  const [weightText, setWeightText] = useState(fieldA(set));
+  const [repsText, setRepsText] = useState(fieldB(set));
+  const prevA = fieldA(prev);
+  const prevB = fieldB(prev);
+  const colA = cardio ? 'min' : 'kg';
+  const colB = cardio ? (floors ? 'floors' : 'km') : 'reps';
   const done = set.done === 1;
   const pr = prs.length > 0;
 
@@ -688,47 +728,64 @@ function SetLine({
     const t = cleanNumber(raw, true);
     setWeightText(t);
     latest.current.w = t;
-    onPatch({ weight: parseNum(t), reps: parseNum(latest.current.r), done });
+    onPatch(patchOf(t, latest.current.r, done));
   };
+  const decimalB = cardio && !floors;
   const changeReps = (raw: string) => {
-    const t = cleanNumber(raw, false);
+    const t = cleanNumber(raw, decimalB);
     setRepsText(t);
     latest.current.r = t;
-    onPatch({ weight: parseNum(latest.current.w), reps: parseNum(t), done });
+    onPatch(patchOf(latest.current.w, t, done));
   };
   const pad = useNumberPad();
   const keyW = `${set.id}-w`;
   const keyR = `${set.id}-r`;
+  // Done on the keypad ticks the set off (if it isn't already).
   const openReps = () =>
-    pad.open({ key: keyR, label: `${label} · reps`, value: latest.current.r, decimal: false, onChange: changeReps });
+    pad.open({
+      key: keyR,
+      label: `${label} · ${colB}`,
+      value: latest.current.r,
+      decimal: decimalB,
+      onChange: changeReps,
+      onDone: () => {
+        if (!doneRef.current) toggle();
+      },
+    });
   const openWeight = () =>
     pad.open({
       key: keyW,
-      label: `${label} · kg`,
+      label: `${label} · ${colA}`,
       value: latest.current.w,
       decimal: true,
       onChange: changeWeight,
       next: openReps,
+      plates: barbell && !cardio,
     });
 
+  const doneRef = useRef(done);
+  doneRef.current = done;
   const toggle = () => {
-    if (done) {
-      onPatch({ weight: parseNum(weightText), reps: parseNum(repsText), done: false });
+    const { w, r } = latest.current;
+    if (doneRef.current) {
+      onPatch(patchOf(w, r, false));
       return;
     }
     // Empty fields take over the values from last time, like Hevy.
-    const weight = parseNum(weightText) ?? prev?.weight ?? null;
-    const reps = parseNum(repsText) ?? prev?.reps ?? null;
-    if (reps == null || reps === 0) {
+    const a = w || prevA;
+    const b = r || prevB;
+    const ok = cardio ? (parseNum(a) ?? 0) > 0 || (parseNum(b) ?? 0) > 0 : (parseNum(b) ?? 0) > 0;
+    if (!ok) {
       haptic.warning();
       return;
     }
-    setWeightText(fmtWeight(weight));
-    setRepsText(String(reps));
-    onPatch({ weight, reps, done: true });
+    setWeightText(a);
+    setRepsText(b);
+    latest.current = { w: a, r: b };
+    onPatch(patchOf(a, b, true));
   };
 
-  // Swipe the row to the left: a bin appears behind it. Swipe all the way to delete straight away.
+  // Swipe the row to the left: a bin appears behind it, tap it to delete the set.
   const swipeX = useSharedValue(0);
   const swipeStart = useRef(0);
   const swiped = useRef(false);
@@ -750,13 +807,13 @@ function SetLine({
       pad.close();
     },
     onUpdate: (e) => {
+      // Stops a little past the bin: a swipe never deletes on its own.
       const x = swipeStart.current + e.translationX;
-      swipeX.value = x > 0 ? x * 0.15 : x;
+      swipeX.value = x > 0 ? x * 0.15 : x < -BIN_WIDTH ? -BIN_WIDTH + (x + BIN_WIDTH) * 0.2 : x;
     },
-    onDeactivate: (e) => {
+    onDeactivate: () => {
       const x = swipeX.value;
-      if (x < -220 || (x < -120 && e.velocityX < -900)) deleteBySwipe();
-      else if (x < -36) {
+      if (x < -36) {
         haptic.tap();
         swipeX.value = withSpring(-BIN_WIDTH, { damping: 20, stiffness: 260 });
       } else closeSwipe();
@@ -821,9 +878,10 @@ function SetLine({
               onPress={tap(() => {
                 if (pr) return showRecords(exercise, index, prs);
                 if (!prev) return;
-                setWeightText(fmtWeight(prev.weight));
-                setRepsText(prev.reps == null ? '' : String(prev.reps));
-                onPatch({ weight: prev.weight, reps: prev.reps, done });
+                setWeightText(prevA);
+                setRepsText(prevB);
+                latest.current = { w: prevA, r: prevB };
+                onPatch(patchOf(prevA, prevB, done));
               })}>
               {pr ? (
                 <Text style={[styles.prevText, { color: C.gold, fontFamily: F.semi }]} numberOfLines={1}>
@@ -831,49 +889,53 @@ function SetLine({
                 </Text>
               ) : (
                 <Text style={styles.prevText} numberOfLines={1}>
-                  {prev ? fmtSet(prev.weight, prev.reps) : '—'}
+                  {prev
+                    ? cardio
+                      ? fmtCardio(prev.seconds, prev.distance, floors)
+                      : fmtSet(prev.weight, prev.reps)
+                    : '—'}
                 </Text>
               )}
             </Pressable>
             {pad.enabled ? (
               <PadField
                 value={weightText}
-                placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
+                placeholder={prevA || '0'}
                 active={pad.activeKey === keyW}
                 done={done}
-                label={`Set ${index + 1} weight in kg`}
+                label={cardio ? `Set ${index + 1} minutes` : `Set ${index + 1} weight in kg`}
                 onPress={tap(openWeight)}
               />
             ) : (
               <TextInput
                 value={weightText}
                 onChangeText={changeWeight}
-                placeholder={prev ? fmtWeight(prev.weight) || '0' : '0'}
+                placeholder={prevA || '0'}
                 placeholderTextColor={C.textFaint}
                 keyboardType="decimal-pad"
                 selectTextOnFocus
-                accessibilityLabel={`Set ${index + 1} weight in kg`}
+                accessibilityLabel={cardio ? `Set ${index + 1} minutes` : `Set ${index + 1} weight in kg`}
                 style={[styles.colInput, styles.input, done && styles.inputDone]}
               />
             )}
             {pad.enabled ? (
               <PadField
                 value={repsText}
-                placeholder={prev?.reps != null ? String(prev.reps) : '0'}
+                placeholder={prevB || '0'}
                 active={pad.activeKey === keyR}
                 done={done}
-                label={`Set ${index + 1} reps`}
+                label={cardio ? `Set ${index + 1} ${colB}` : `Set ${index + 1} reps`}
                 onPress={tap(openReps)}
               />
             ) : (
               <TextInput
                 value={repsText}
                 onChangeText={changeReps}
-                placeholder={prev?.reps != null ? String(prev.reps) : '0'}
+                placeholder={prevB || '0'}
                 placeholderTextColor={C.textFaint}
-                keyboardType="number-pad"
+                keyboardType={decimalB ? 'decimal-pad' : 'number-pad'}
                 selectTextOnFocus
-                accessibilityLabel={`Set ${index + 1} reps`}
+                accessibilityLabel={cardio ? `Set ${index + 1} ${colB}` : `Set ${index + 1} reps`}
                 style={[styles.colInput, styles.input, done && styles.inputDone]}
               />
             )}
@@ -1194,7 +1256,9 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
                           {special ? special.letter : number}
                         </Text>
                         <Text style={[text.dim, prSetIds.has(s.id) && { color: C.gold }]}>
-                          {fmtSet(s.weight, s.reps)}
+                          {ex.track && ex.track !== 'weight_reps'
+                            ? fmtCardio(s.seconds, s.distance, ex.track === 'time_floors')
+                            : fmtSet(s.weight, s.reps)}
                         </Text>
                         {prSetIds.has(s.id) ? <Ionicons name="trophy" size={11} color={C.gold} /> : null}
                       </View>

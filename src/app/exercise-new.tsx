@@ -6,12 +6,18 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { BodyMap } from '@/components/body-map';
 import { Button, Card, Chip, text } from '@/components/ui';
-import { addExerciseToRoutine, addExerciseToWorkout, createExercise } from '@/lib/db';
+import { addExerciseToRoutine, addExerciseToWorkout, createExercise, type Track } from '@/lib/db';
 import { notify } from '@/lib/dialog';
 import { EQUIPMENT, MUSCLES } from '@/lib/exercise-data';
 import { haptic } from '@/lib/haptics';
 import { musclesFor } from '@/lib/muscles';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
+
+const TRACKS: { track: Track; label: string }[] = [
+  { track: 'weight_reps', label: 'kg × reps' },
+  { track: 'time_distance', label: 'Time + km' },
+  { track: 'time_floors', label: 'Time + floors' },
+];
 
 /**
  * Modal: add your own exercise or a machine your gym has.
@@ -25,6 +31,7 @@ export default function NewExercise() {
   const [muscle, setMuscle] = useState<string>('Chest');
   const [also, setAlso] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<string>('Machine');
+  const [track, setTrack] = useState<Track>('weight_reps');
   const target = params.workoutId ? 'workout' : params.routineId ? 'routine' : null;
 
   const toggleAlso = (m: string) => setAlso((list) => (list.includes(m) ? list.filter((x) => x !== m) : [...list, m]));
@@ -34,7 +41,7 @@ export default function NewExercise() {
       notify('Give it a name', 'For example "Hammer Strength row" or "Cable lateral raise".', 'create-outline');
       return;
     }
-    const id = await createExercise(db, name, muscle, equipment, also);
+    const id = await createExercise(db, name, muscle, equipment, also, track);
     if (params.workoutId) await addExerciseToWorkout(db, Number(params.workoutId), id);
     if (params.routineId) await addExerciseToRoutine(db, Number(params.routineId), id);
     haptic.success();
@@ -74,6 +81,9 @@ export default function NewExercise() {
             onPress={() => {
               setMuscle(m);
               setAlso((list) => list.filter((x) => x !== m));
+              // Cardio is logged with time; switching back goes to kg and reps.
+              if (m === 'Cardio' && track === 'weight_reps') setTrack('time_distance');
+              if (m !== 'Cardio' && muscle === 'Cardio') setTrack('weight_reps');
             }}
           />
         ))}
@@ -90,6 +100,13 @@ export default function NewExercise() {
       <View style={styles.wrap}>
         {EQUIPMENT.map((e) => (
           <Chip key={e} label={e} active={equipment === e} onPress={() => setEquipment(e)} />
+        ))}
+      </View>
+
+      <Text style={[text.label, { marginTop: S.md }]}>Each set records</Text>
+      <View style={styles.wrap}>
+        {TRACKS.map((t) => (
+          <Chip key={t.track} label={t.label} active={track === t.track} onPress={() => setTrack(t.track)} />
         ))}
       </View>
 

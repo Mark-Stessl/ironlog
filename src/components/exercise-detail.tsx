@@ -10,7 +10,7 @@ import { Button, Card, Empty, ListCard, ListRow, SectionTitle, text } from '@/co
 import { computeRecords, getExercise, getExerciseHistory, setExerciseNotes } from '@/lib/db';
 import { formVideoUrl, getMedia, REPDB_URL } from '@/lib/exercise-media';
 import { musclesFor } from '@/lib/muscles';
-import { fmtDate, fmtSet, fmtVolume, fmtWeight } from '@/lib/format';
+import { fmtDate, fmtCardio, fmtCardioTime, fmtSet, fmtVolume, fmtWeight } from '@/lib/format';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { useFocusData } from '@/lib/use-focus-data';
 
@@ -30,6 +30,13 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
 
   const { exercise, sessions } = data;
   const rec = computeRecords(sessions);
+  const cardio = !!exercise.track && exercise.track !== 'weight_reps';
+  const floors = exercise.track === 'time_floors';
+  const allSets = sessions.flatMap((s) => s.sets);
+  const longest = Math.max(0, ...allSets.map((x) => x.seconds ?? 0));
+  const farthest = Math.max(0, ...allSets.map((x) => x.distance ?? 0));
+  const fmt = (x: (typeof allSets)[number]) =>
+    cardio ? fmtCardio(x.seconds, x.distance, floors) : fmtSet(x.weight, x.reps);
   const media = getMedia(exercise.name);
   const imageSize = desktop ? 180 : 132;
 
@@ -59,32 +66,53 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
 
       {media ? <Text style={[text.body, { color: C.textDim }]}>{media.description}</Text> : null}
 
-      <SectionTitle title="Muscles worked" />
-      <Card style={{ paddingVertical: S.lg }}>
-        <BodyMap muscles={musclesFor(exercise)} height={desktop ? 340 : 280} />
-      </Card>
+      {cardio ? null : (
+        <>
+          <SectionTitle title="Muscles worked" />
+          <Card style={{ paddingVertical: S.lg }}>
+            <BodyMap muscles={musclesFor(exercise)} height={desktop ? 340 : 280} />
+          </Card>
+        </>
+      )}
 
       <SectionTitle title="Records" />
-      <Card style={styles.records}>
-        <Record
-          label="Heaviest"
-          value={rec.bestWeight ? `${fmtWeight(rec.bestWeight.weight)} kg` : '—'}
-          sub={rec.bestWeight ? `× ${rec.bestWeight.reps}` : undefined}
-        />
-        <View style={styles.recordLine} />
-        <Record
-          label="Est. 1RM"
-          value={rec.best1RM ? `${fmtWeight(rec.best1RM.value)} kg` : '—'}
-          sub={rec.best1RM ? fmtSet(rec.best1RM.weight, rec.best1RM.reps) : undefined}
-        />
-        <View style={styles.recordLine} />
-        <Record label="Best session" value={rec.bestVolume ? fmtVolume(rec.bestVolume.value) : '—'} />
-      </Card>
+      {cardio ? (
+        <Card style={styles.records}>
+          <Record label="Longest" value={longest ? fmtCardioTime(longest) : '—'} />
+          <View style={styles.recordLine} />
+          <Record
+            label={floors ? 'Most floors' : 'Farthest'}
+            value={farthest ? `${fmtWeight(farthest)} ${floors ? 'floors' : 'km'}` : '—'}
+          />
+          <View style={styles.recordLine} />
+          <Record label="Sessions" value={String(sessions.length)} />
+        </Card>
+      ) : (
+        <Card style={styles.records}>
+          <Record
+            label="Heaviest"
+            value={rec.bestWeight ? `${fmtWeight(rec.bestWeight.weight)} kg` : '—'}
+            sub={rec.bestWeight ? `× ${rec.bestWeight.reps}` : undefined}
+          />
+          <View style={styles.recordLine} />
+          <Record
+            label="Est. 1RM"
+            value={rec.best1RM ? `${fmtWeight(rec.best1RM.value)} kg` : '—'}
+            sub={rec.best1RM ? fmtSet(rec.best1RM.weight, rec.best1RM.reps) : undefined}
+          />
+          <View style={styles.recordLine} />
+          <Record label="Best session" value={rec.bestVolume ? fmtVolume(rec.bestVolume.value) : '—'} />
+        </Card>
+      )}
 
-      <SectionTitle title="Strength" />
-      <Card>
-        <StrengthChart sessions={sessions} />
-      </Card>
+      {cardio ? null : (
+        <>
+          <SectionTitle title="Strength" />
+          <Card>
+            <StrengthChart sessions={sessions} />
+          </Card>
+        </>
+      )}
 
       {media ? (
         <>
@@ -127,9 +155,7 @@ export function ExerciseDetail({ exerciseId }: { exerciseId: number }) {
                 </Text>
                 <Text style={text.faint}>{fmtDate(s.date)}</Text>
               </View>
-              <Text style={[text.dim, { flex: 1 }]}>
-                {s.sets.map((set) => fmtSet(set.weight, set.reps)).join('   ')}
-              </Text>
+              <Text style={[text.dim, { flex: 1 }]}>{s.sets.map(fmt).join('   ')}</Text>
             </ListRow>
           ))}
         </ListCard>
