@@ -5,10 +5,13 @@ import { Pressable, StyleSheet, Text, View, type PressableStateCallbackType } fr
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { Avatar } from '@/components/avatar';
+import { RecoveryCard } from '@/components/recovery-card';
+import { SigilView } from '@/components/sigil';
 import { ProgressChart } from '@/components/progress-chart';
 import { Card, Empty, ListCard, ListRow, Page, SectionTitle, text, type IconName } from '@/components/ui';
 import { dayKey, dayStreak } from '@/lib/calendar';
-import { getSetting, listFinishedWorkouts, listRestDays, recordRows } from '@/lib/db';
+import { getSetting, listFinishedWorkouts, listRestDays, recordRows, sigilRows } from '@/lib/db';
+import { buildSigil, sigilInputs } from '@/lib/sigil';
 import { dailyTotals, dayWater, getGoals } from '@/lib/food-db';
 import { fmtDate, fmtDurationShort, fmtVolume } from '@/lib/format';
 import { greeting, motivation } from '@/lib/greeting';
@@ -35,8 +38,13 @@ export default function OverviewTab() {
       dayWater(db, today),
       getGoals(db),
     ]);
-    const fresh = latestRecords(recordBook(await recordRows(db)).events);
-    return { name: name.trim(), photo, fresh, workouts, rest, kcal: food.get(today)?.kcal ?? 0, water, goals };
+    const book = recordBook(await recordRows(db));
+    const fresh = latestRecords(book.events);
+    // Sigils for the history list.
+    const counts = new Map<number, number>();
+    for (const e of book.events) counts.set(e.workout_id, (counts.get(e.workout_id) ?? 0) + 1);
+    const sigils = new Map(sigilInputs(await sigilRows(db), counts).map((w) => [w.id, buildSigil(w)]));
+    return { name: name.trim(), photo, fresh, sigils, workouts, rest, kcal: food.get(today)?.kcal ?? 0, water, goals };
   });
 
   const workouts = data?.workouts ?? [];
@@ -135,14 +143,15 @@ export default function OverviewTab() {
                       key={w.id}
                       last={i === g.items.length - 1}
                       onPress={() => router.push({ pathname: '/workout/[id]', params: { id: String(w.id) } })}
-                      style={{ alignItems: 'flex-start', paddingVertical: S.md }}>
+                      style={{ alignItems: 'center', paddingVertical: S.md }}>
+                      {data?.sigils.get(w.id) ? <SigilView sigil={data.sigils.get(w.id)!} size={42} /> : null}
                       <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: S.sm }}>
-                          <Text style={[text.strong, { flexShrink: 1 }]} numberOfLines={1}>
-                            {w.name}
-                          </Text>
-                          <Text style={text.faint}>{fmtDate(end)}</Text>
-                        </View>
+                        <Text style={text.strong} numberOfLines={1}>
+                          {w.name}
+                        </Text>
+                        <Text style={text.faint} numberOfLines={1}>
+                          {fmtDate(end)}
+                        </Text>
                         {w.exercise_names ? (
                           <Text style={text.faint} numberOfLines={1}>
                             {w.exercise_names}
@@ -173,6 +182,7 @@ export default function OverviewTab() {
       {welcome}
       {data?.fresh && data.fresh.date >= Date.now() - 7 * 86_400_000 ? <NewRecords {...data.fresh} /> : null}
       {glance}
+      {workouts.length ? <RecoveryCard /> : null}
       {desktop ? (
         <View style={styles.columns}>
           <View style={{ flex: 1, minWidth: 0 }}>{progress}</View>

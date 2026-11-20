@@ -35,6 +35,8 @@ import { RestBar } from '@/components/rest-bar';
 import { NumberPadProvider, PAD_HEIGHT, cleanNumber, useNumberPad } from '@/components/number-pad';
 import { PlateButton, usesBarbell } from '@/components/plate-calculator';
 import { DragSortProvider, useDragItem } from '@/components/drag-sort';
+import { RaceBar } from '@/components/race-bar';
+import { SigilCard } from '@/components/sigil';
 import { ExerciseSearch } from '@/components/exercise-search';
 import {
   Button,
@@ -105,6 +107,7 @@ import { sound } from '@/lib/sound';
 import { heat, muscleStats } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { primeKeyboard } from '@/lib/keyboard';
+import { raceAgainstLastTime } from '@/lib/race';
 import { searchExercises } from '@/lib/search';
 import { useFocusData } from '@/lib/use-focus-data';
 import { adjustRest, takeFinishRequest, useRest } from '@/lib/workout-session';
@@ -239,6 +242,7 @@ function ActiveWorkout({
   const finishRef = useRef(() => {});
 
   const doneSets = exercises.flatMap((e) => e.sets).filter((s) => s.done);
+  const race = raceAgainstLastTime(exercises);
   const volume = doneSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
 
   const finish = async () => {
@@ -403,6 +407,11 @@ function ActiveWorkout({
             </Pressable>
           </View>
 
+          {race.ghost > 0 && doneSets.length > 0 ? (
+            <View style={{ marginBottom: S.sm }}>
+              <RaceBar race={race} compact />
+            </View>
+          ) : null}
           {exercises.length > 0 && !desktop ? (
             <Pressable
               onPress={openFocus}
@@ -1411,6 +1420,25 @@ function FinishedWorkout({ detail }: { detail: WorkoutDetail }) {
           <StatCard icon="layers-outline" label="Sets">
             <CountUp value={sets.length} delay={justFinished ? 450 : 0} style={styles.statBig} />
           </StatCard>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(justFinished ? 450 : 50).duration(350)} style={{ marginTop: S.md }}>
+          <SigilCard
+            grow={justFinished}
+            title={workout.name}
+            sub={`${fmtDate(end)} · ${fmtVolume(volume)} · ${plural(sets.filter((x) => x.done).length, 'set')}`}
+            input={{
+              id: workout.id,
+              started_at: workout.started_at,
+              finished_at: workout.finished_at,
+              records: recordCount,
+              exercises: exercises.map((ex) => ({
+                name: ex.name,
+                muscle: ex.muscle,
+                sets: ex.sets.filter((x) => x.done && x.kind !== 'warmup'),
+              })),
+            }}
+          />
         </Animated.View>
 
         <SectionTitle title="Muscles trained" />

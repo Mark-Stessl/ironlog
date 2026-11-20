@@ -3,6 +3,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { CARDIO_EXERCISES, SEED_EXERCISES } from './exercise-data';
 import { defaultWorkoutName, est1RM } from './format';
 import { addToBest, NO_BEST, type Best, type RecordRow } from './records';
+import type { SigilRow } from './sigil';
+import type { YearSet } from './year';
 import type { PlanItem } from './routine-diff';
 import { FOOD_SCHEMA } from './food-db';
 import type { StatSet } from './stats';
@@ -993,6 +995,72 @@ export function recordRows(db: SQLiteDatabase): Promise<RecordRow[]> {
      JOIN exercises e ON e.id = we.exercise_id
      WHERE s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL
      ORDER BY w.finished_at, w.id, we.position, s.position`,
+  );
+}
+
+/** Working sets of the last `days` days with what each exercise trains (for the muscle map). */
+export function recentMuscleSets(db: SQLiteDatabase, days = 8) {
+  return db.getAllAsync<{ name: string; muscle: string; secondary: string; date: number }>(
+    `SELECT e.name, e.muscle, e.secondary, w.finished_at AS date
+     FROM sets s
+     JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN workouts w ON w.id = we.workout_id
+     JOIN exercises e ON e.id = we.exercise_id
+     WHERE s.done = 1 AND s.kind != 'warmup' AND e.track = 'weight_reps'
+       AND w.finished_at IS NOT NULL AND w.finished_at >= ?`,
+    Date.now() - days * 86_400_000,
+  );
+}
+
+/** Every routine with the exercises in it (name and muscles). */
+export async function routinesWithExercises(db: SQLiteDatabase) {
+  const rows = await db.getAllAsync<{ id: number; rname: string; name: string; muscle: string; secondary: string }>(
+    `SELECT r.id, r.name AS rname, e.name, e.muscle, e.secondary
+     FROM routines r
+     JOIN routine_exercises re ON re.routine_id = r.id
+     JOIN exercises e ON e.id = re.exercise_id
+     ORDER BY r.id, re.position`,
+  );
+  const out = new Map<
+    number,
+    { id: number; name: string; exercises: { name: string; muscle: string; secondary: string }[] }
+  >();
+  for (const r of rows) {
+    if (!out.has(r.id)) out.set(r.id, { id: r.id, name: r.rname, exercises: [] });
+    out.get(r.id)!.exercises.push({ name: r.name, muscle: r.muscle, secondary: r.secondary });
+  }
+  return [...out.values()];
+}
+
+/** Working sets of finished workouts, newest workout first, for drawing sigils. */
+export function sigilRows(db: SQLiteDatabase, workoutId?: number) {
+  return db.getAllAsync<SigilRow>(
+    `SELECT w.id AS workout_id, w.name AS workout_name, w.started_at, w.finished_at,
+            e.name AS exercise, e.muscle, s.weight, s.reps
+     FROM sets s
+     JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN workouts w ON w.id = we.workout_id
+     JOIN exercises e ON e.id = we.exercise_id
+     WHERE s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL ${workoutId != null ? 'AND w.id = ?' : ''}
+     ORDER BY w.finished_at DESC, w.id, we.position, s.position`,
+    ...(workoutId != null ? [workoutId] : []),
+  );
+}
+
+/** Every working set of a year's finished workouts (for Year in Iron). */
+export function yearSets(db: SQLiteDatabase, year: number) {
+  return db.getAllAsync<YearSet>(
+    `SELECT w.id AS workout_id, w.started_at, w.finished_at, e.name AS exercise, e.muscle, e.track,
+            s.weight, s.reps, s.seconds, s.distance
+     FROM sets s
+     JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN workouts w ON w.id = we.workout_id
+     JOIN exercises e ON e.id = we.exercise_id
+     WHERE s.done = 1 AND s.kind != 'warmup' AND w.finished_at IS NOT NULL
+       AND w.finished_at >= ? AND w.finished_at < ?
+     ORDER BY w.finished_at`,
+    new Date(year, 0, 1).getTime(),
+    new Date(year + 1, 0, 1).getTime(),
   );
 }
 

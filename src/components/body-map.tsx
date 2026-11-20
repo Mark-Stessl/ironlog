@@ -17,7 +17,10 @@ export function BodyMap({
   heat,
   height = 220,
   legend = true,
+  palette = 'trained',
 }: {
+  /** 'tired' shades from amber to red (muscle map recovery) instead of cyan. */
+  palette?: 'trained' | 'tired';
   /** Highlight primary / secondary muscles of one exercise. */
   muscles?: MuscleMap;
   /** Or shade areas by how much they were trained (0..1). */
@@ -30,6 +33,7 @@ export function BodyMap({
   const fill = (r: string) => {
     if (heat) {
       const v = heat[r as Region] ?? 0;
+      if (palette === 'tired') return tiredColor(v);
       return v > 0 ? `rgba(34,211,238,${(0.2 + 0.8 * v).toFixed(2)})` : IDLE;
     }
     return primary.has(r as Region) ? PRIMARY : secondary.has(r as Region) ? SECONDARY : IDLE;
@@ -76,7 +80,15 @@ export function BodyMap({
           <Text style={styles.caption}>Back</Text>
         </View>
       </View>
-      {heat && legend ? (
+      {heat && legend && palette === 'tired' ? (
+        <View style={styles.scale}>
+          <Text style={text.faint}>Fresh</Text>
+          {[0.15, 0.35, 0.55, 0.75, 0.95].map((v) => (
+            <View key={v} style={[styles.scaleStep, { backgroundColor: tiredColor(v) }]} />
+          ))}
+          <Text style={text.faint}>Tired</Text>
+        </View>
+      ) : heat && legend ? (
         <View style={styles.scale}>
           <Text style={text.faint}>Less</Text>
           {[0.2, 0.4, 0.6, 0.8, 1].map((v) => (
@@ -97,6 +109,17 @@ export function BodyMap({
       ) : null}
     </View>
   );
+}
+
+/** Fresh = plain, then amber → orange → red as a muscle gets more tired. */
+export function tiredColor(v: number): string {
+  if (v < 0.12) return IDLE;
+  const t = Math.min(1, (v - 0.12) / 0.88);
+  // amber (245,165,36) → red (239,68,68)
+  const r = Math.round(245 - 6 * t);
+  const g = Math.round(165 - 97 * t);
+  const b = Math.round(36 + 32 * t);
+  return `rgba(${r},${g},${b},${(0.35 + 0.65 * t).toFixed(2)})`;
 }
 
 function LegendRow({ color, title, names }: { color: string; title: string; names: string[] }) {

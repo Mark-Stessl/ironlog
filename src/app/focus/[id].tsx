@@ -32,6 +32,7 @@ import { Elapsed } from '@/components/elapsed';
 import { ExerciseImage } from '@/components/exercise-image';
 import { NumberPadProvider, useNumberPad } from '@/components/number-pad';
 import { PlateLine, usesBarbell } from '@/components/plate-calculator';
+import { RaceBar } from '@/components/race-bar';
 import {
   addSet,
   deleteSet,
@@ -48,6 +49,7 @@ import {
 } from '@/lib/db';
 import { fmtCardio, fmtDuration, fmtSet, fmtVolume, fmtWeight, minutesText, parseNum } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
+import { raceAgainstLastTime, type Race } from '@/lib/race';
 import { addToBest, findPRs, markPRs, type Best } from '@/lib/records';
 import { sound } from '@/lib/sound';
 import { C, F, R, S } from '@/lib/theme';
@@ -253,14 +255,15 @@ function Focus({
     );
 
   const upNext = step && !step.set.done ? step : steps.find((s) => !s.set.done);
+  const race = raceAgainstLastTime(detail.exercises);
 
   return (
     <View style={[styles.fill, { paddingTop: insets.top + S.sm, paddingBottom: Math.max(insets.bottom, 12) + 22 }]}>
       <TopBar detail={detail} steps={steps} cursor={cursor} finished={finished} onClose={close} onJump={setCursor} />
       {finished ? (
-        <AllDone detail={detail} onAddSet={addOneMore} onClose={close} />
+        <AllDone detail={detail} race={race} onAddSet={addOneMore} onClose={close} />
       ) : rest && rest.endAt > Date.now() - 1500 ? (
-        <RestView key={rest.id} endAt={rest.endAt} total={rest.total} next={upNext} />
+        <RestView key={rest.id} endAt={rest.endAt} total={rest.total} next={upNext} race={race} />
       ) : step ? (
         <SetView
           key={step.set.id}
@@ -890,7 +893,7 @@ function SlideToDone({ enabled, label, onDone }: { enabled: boolean; label: stri
 
 // ── Rest: a full-screen ring, and what's next ──────────────────────────
 
-function RestView({ endAt, total, next }: { endAt: number; total: number; next?: Step }) {
+function RestView({ endAt, total, next, race }: { endAt: number; total: number; next?: Step; race: Race }) {
   const { width } = useWindowDimensions();
   const size = Math.min(width - 80, 300);
   const stroke = 12;
@@ -987,6 +990,7 @@ function RestView({ endAt, total, next }: { endAt: number; total: number; next?:
           <Text style={styles.restButtonText}>+15</Text>
         </Pressable>
       </View>
+      <RaceBar race={race} compact />
       {nx ? (
         <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.upNext}>
           <ExerciseImage name={nx.ex.name} equipment={nx.ex.equipment} size={40} radius={9} />
@@ -1016,7 +1020,17 @@ function describeNext({ ex, set, setIndex }: Step) {
 
 // ── Every set done ──────────────────────────────────────────────────────
 
-function AllDone({ detail, onAddSet, onClose }: { detail: WorkoutDetail; onAddSet: () => void; onClose: () => void }) {
+function AllDone({
+  detail,
+  race,
+  onAddSet,
+  onClose,
+}: {
+  detail: WorkoutDetail;
+  race: Race;
+  onAddSet: () => void;
+  onClose: () => void;
+}) {
   const sets = detail.exercises.flatMap((e) => e.sets).filter((s) => s.done);
   const volume = sets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
   return (
@@ -1030,7 +1044,8 @@ function AllDone({ detail, onAddSet, onClose }: { detail: WorkoutDetail; onAddSe
         <DoneStat value={volume ? fmtVolume(volume) : '–'} label="volume" />
         <DoneStat value={<Elapsed since={detail.workout.started_at} style={styles.doneStatValue} />} label="time" />
       </View>
-      <View style={{ width: '100%', gap: S.sm, marginTop: S.md }}>
+      <RaceBar race={race} total />
+      <View style={{ width: '100%', gap: S.sm, marginTop: S.sm }}>
         <Pressable
           onPress={() => {
             requestFinish();

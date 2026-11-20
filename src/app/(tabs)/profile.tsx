@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useRef, useState } from 'react';
@@ -7,6 +8,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { Avatar } from '@/components/avatar';
 import { BodyMap } from '@/components/body-map';
+import { SigilView } from '@/components/sigil';
 import { CountUp } from '@/components/count-up';
 import { MuscleBars } from '@/components/muscle-bars';
 import { RadarChart } from '@/components/radar-chart';
@@ -18,6 +20,7 @@ import {
   latestMeasurements,
   listExercises,
   recordRows,
+  sigilRows,
   listMeasurements,
   listRestDays,
   profileTotals,
@@ -30,6 +33,7 @@ import { fmtMeasure, WEIGHT } from '@/lib/measures';
 import { dailyTotals, getGoals, waterBetween } from '@/lib/food-db';
 import { fmtAgo, fmtDurationShort, fmtVolume, plural } from '@/lib/format';
 import { groupRecords, recordBook } from '@/lib/records';
+import { buildSigil, sigilInputs } from '@/lib/sigil';
 import { nutritionSummary, weightChange } from '@/lib/overview';
 import { GROUPS, heat, muscleStats, periodRange, type Period } from '@/lib/stats';
 import { C, F, R, S, useIsDesktop } from '@/lib/theme';
@@ -89,10 +93,15 @@ export default function ProfileTab() {
     const lastBackup = Number(await getSetting(db, 'last_backup', '0')) || null;
     const photo = await getSetting(db, 'profile_photo', '');
     const book = recordBook(await recordRows(db));
+    const counts = new Map<number, number>();
+    for (const e of book.events) counts.set(e.workout_id, (counts.get(e.workout_id) ?? 0) + 1);
+    const sigilList = sigilInputs(await sigilRows(db), counts);
     const streak = dayStreak(new Set([...workouts.map((w) => dayKey(w.started_at)), ...rest]));
     return {
       name,
       photo,
+      sigil: sigilList[0] ? buildSigil(sigilList[0]) : null,
+      sigilCount: sigilList.length,
       records: {
         count: book.events.length,
         latest: groupRecords(book.events).slice(0, 3),
@@ -141,6 +150,44 @@ export default function ProfileTab() {
             />
           </View>
           <RecordsCard {...profile.records} />
+          <View style={styles.tiles}>
+            <Pressable
+              onPress={() => router.push('/sigils')}
+              accessibilityRole="button"
+              accessibilityLabel="Your sigils"
+              style={({ pressed }) => [styles.tile, pressed && { opacity: 0.85 }]}>
+              {profile.sigil ? (
+                <SigilView sigil={profile.sigil} size={46} />
+              ) : (
+                <Ionicons name="sparkles" size={30} color={C.accent} />
+              )}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={text.strong}>Sigils</Text>
+                <Text style={text.faint} numberOfLines={1}>
+                  {profile.sigilCount ? `${profile.sigilCount} grown` : 'One per workout'}
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/year')}
+              accessibilityRole="button"
+              accessibilityLabel={`Year in Iron ${new Date().getFullYear()}`}
+              style={({ pressed }) => [styles.tile, styles.yearTile, pressed && { opacity: 0.85 }]}>
+              <LinearGradient
+                colors={['#0B3440', '#5B21B6']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              <Ionicons name="play-circle" size={30} color="#fff" />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[text.strong, { color: '#fff' }]}>Year in Iron</Text>
+                <Text style={[text.faint, { color: 'rgba(255,255,255,0.75)' }]} numberOfLines={1}>
+                  Your {new Date().getFullYear()} story
+                </Text>
+              </View>
+            </Pressable>
+          </View>
         </>
       ) : null}
 
@@ -541,6 +588,21 @@ const styles = StyleSheet.create({
     marginTop: S.xs,
     marginBottom: S.sm,
   },
+  tiles: { flexDirection: 'row', gap: S.sm, marginTop: S.sm },
+  tile: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.md,
+    padding: S.md,
+    minHeight: 72,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+    overflow: 'hidden',
+  },
+  yearTile: { borderColor: 'transparent' },
   records: {
     gap: S.sm,
     marginTop: S.sm,

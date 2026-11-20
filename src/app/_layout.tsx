@@ -77,6 +77,11 @@ export default function RootLayout() {
                   <Stack.Screen name="calendar" options={{ title: '' }} />
                   <Stack.Screen name="measures" options={{ title: '' }} />
                   <Stack.Screen name="records" options={{ title: '' }} />
+                  <Stack.Screen name="sigils" options={{ title: '' }} />
+                  <Stack.Screen
+                    name="year"
+                    options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }}
+                  />
                   <Stack.Screen
                     name="focus/[id]"
                     options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'fade' }}

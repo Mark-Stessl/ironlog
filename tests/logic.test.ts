@@ -1109,3 +1109,109 @@ test('record book: bests per exercise and when records were broken', async () =>
   assert.ok(events.some((e) => e.name === 'Treadmill' && e.kind === 'time'));
   assert.ok(!events.some((e) => e.kind === 'distance'));
 });
+
+test('race: today against last time, set by set', async () => {
+  const { raceAgainstLastTime, fmtDelta } = await import('../src/lib/race');
+  const set = (weight: number, reps: number, done = 1, kind = 'normal') => ({ weight, reps, done, kind }) as never;
+  const race = raceAgainstLastTime([
+    // Bench: last time 60×8, 60×8; today one set of 65×8 so far.
+    { sets: [set(65, 8), set(65, 8, 0)], previous: [{ weight: 60, reps: 8 }, { weight: 60, reps: 8 }] },
+    // A new exercise: no ghost, so it doesn't count.
+    { sets: [set(20, 10)], previous: [] },
+    // Warm-ups never count.
+    { sets: [set(20, 10, 1, 'warmup')], previous: [{ weight: 20, reps: 10, kind: 'warmup' }] },
+  ]);
+  assert.deepEqual([race.you, race.ghost, race.ghostTotal], [520, 480, 960]);
+  assert.equal(fmtDelta(race.delta!), '+8 %');
+  assert.equal(fmtDelta(-0.031), '−3 %');
+  assert.equal(raceAgainstLastTime([{ sets: [], previous: [] }]).delta, null);
+});
+
+test('recovery: muscles cool down over the days after training', async () => {
+  const { recovery, suggestRoutine, FRESH } = await import('../src/lib/recovery');
+  const now = Date.UTC(2026, 10, 20, 12);
+  const bench = { name: 'Bench Press (Barbell)', muscle: 'Chest' };
+  const sets = Array.from({ length: 6 }, () => ({ ...bench, date: now - 2 * 3_600_000 }));
+  const fresh = recovery(sets, now);
+  const chest = fresh.groups.find((g) => g.group === 'Chest')!;
+  assert.equal(chest.status, 'tired');
+  assert.ok(chest.readyInH > 24);
+  assert.equal(fresh.groups.find((g) => g.group === 'Legs')!.status, 'fresh');
+  // Four days later it has cooled down.
+  const later = recovery(sets, now + 4 * 86_400_000);
+  assert.ok(later.groups.find((g) => g.group === 'Chest')!.fatigue < FRESH);
+  // Only a routine whose main muscles are fresh is suggested.
+  const routines = [
+    { name: 'Push', groups: ['Chest', 'Shoulders'] },
+    { name: 'Legs', groups: ['Legs'] },
+  ] as { name: string; groups: ('Chest' | 'Shoulders' | 'Legs')[] }[];
+  assert.equal(suggestRoutine(routines, fresh)?.name, 'Legs');
+  assert.equal(suggestRoutine([routines[0]], fresh), null);
+});
+
+test('sigils: the same workout always grows the same sigil, records turn it gold', async () => {
+  const { buildSigil, sigilInputs } = await import('../src/lib/sigil');
+  const input = {
+    id: 7,
+    started_at: Date.UTC(2026, 10, 1, 9),
+    finished_at: Date.UTC(2026, 10, 1, 10),
+    records: 0,
+    exercises: [
+      { name: 'Bench Press (Barbell)', muscle: 'Chest', sets: [{ weight: 60, reps: 8 }, { weight: 60, reps: 8 }] },
+      { name: 'Lat Pulldown', muscle: 'Back', sets: [{ weight: 50, reps: 10 }] },
+    ],
+  };
+  const a = buildSigil(input);
+  assert.deepEqual(a, buildSigil(input));
+  assert.equal(a.gold, false);
+  assert.notDeepEqual(a.shapes, buildSigil({ ...input, id: 8 }).shapes);
+  assert.equal(buildSigil({ ...input, records: 2 }).gold, true);
+  const row = { workout_id: 1, workout_name: 'A', started_at: 1, finished_at: 2, reps: 1 };
+  const grouped = sigilInputs(
+    [
+      { ...row, exercise: 'X', muscle: 'Chest', weight: 1 },
+      { ...row, exercise: 'X', muscle: 'Chest', weight: 2 },
+      { ...row, exercise: 'Y', muscle: 'Back', weight: 3 },
+    ],
+    new Map([[1, 3]]),
+  );
+  assert.deepEqual(grouped[0].exercises.map((e) => [e.name, e.sets.length]), [['X', 2], ['Y', 1]]);
+  assert.equal(grouped[0].records, 3);
+});
+
+test('year in iron: totals, favourite, streak and a fun comparison', async () => {
+  const { yearStory, compareWeight } = await import('../src/lib/year');
+  const day = (m: number, d: number, h = 18) => new Date(2026, m, d, h).getTime();
+  const row = (w: number, t: number, exercise: string, weight: number, reps: number) => ({
+    workout_id: w,
+    started_at: t,
+    finished_at: t + 3_600_000,
+    exercise,
+    muscle: exercise === 'Squat' ? 'Quads' : 'Chest',
+    track: 'weight_reps',
+    weight,
+    reps,
+    seconds: null,
+    distance: null,
+  });
+  const story = yearStory(
+    2026,
+    [
+      row(1, day(0, 5), 'Bench', 100, 10),
+      row(1, day(0, 5), 'Bench', 100, 10),
+      row(2, day(0, 12), 'Squat', 120, 5),
+      row(3, day(0, 19), 'Bench', 105, 8),
+      row(4, day(2, 2), 'Bench', 80, 10),
+      row(9, new Date(2025, 11, 30).getTime(), 'Bench', 500, 100), // another year
+    ],
+    [],
+  );
+  assert.equal(story.workouts, 4);
+  assert.equal(story.kg, 100 * 10 * 2 + 600 + 840 + 800);
+  assert.equal(story.favourite?.name, 'Bench');
+  assert.equal(story.weekStreak, 3);
+  assert.equal(story.timeOfDay, 'evening');
+  assert.equal(story.busiestMonth?.month, 'January');
+  assert.deepEqual(compareWeight(12_000), { count: 2, thing: 'elephant', things: 'elephants' });
+  assert.equal(compareWeight(500), null);
+});
