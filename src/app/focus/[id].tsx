@@ -4,13 +4,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Modal, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
   FadeOut,
+  SlideInDown,
   SlideInRight,
   ZoomIn,
   cancelAnimation,
@@ -33,10 +34,13 @@ import { NumberPadProvider, useNumberPad } from '@/components/number-pad';
 import { PlateLine, usesBarbell } from '@/components/plate-calculator';
 import {
   addSet,
+  deleteSet,
+  setSetKind,
   getSetting,
   getWorkoutDetail,
   updateSet,
   type PrevSet,
+  type SetKind,
   type SetPatch,
   type SetRow,
   type WorkoutDetail,
@@ -166,6 +170,60 @@ function Focus({
     });
   };
 
+  const reloadAndGo = async (pick: (fresh: WorkoutDetail) => number | undefined) => {
+    const fresh = await getWorkoutDetail(db, detail.workout.id);
+    if (!fresh) return;
+    setDetail(() => fresh);
+    const all = fresh.exercises.flatMap((e) => e.sets);
+    const target = pick(fresh);
+    setCursor(Math.max(0, target != null ? all.findIndex((s) => s.id === target) : all.findIndex((s) => !s.done)));
+    setFinished(false);
+  };
+
+  const changeKind = (kind: SetKind) => {
+    if (!step) return;
+    queue.current = queue.current.then(() => setSetKind(db, step.set.id, kind)).catch(() => {});
+    setDetail((d) =>
+      d
+        ? {
+            ...d,
+            exercises: d.exercises.map((ex) => ({
+              ...ex,
+              sets: ex.sets.map((s) => (s.id === step.set.id ? { ...s, kind } : s)),
+            })),
+          }
+        : d,
+    );
+    haptic.tap();
+  };
+
+  /** New set at the end of this exercise, then go straight to it. */
+  const addHere = async (kind?: SetKind, weight?: number | null) => {
+    if (!step) return;
+    const exId = step.ex.id;
+    await queue.current;
+    await addSet(db, exId);
+    const fresh = await getWorkoutDetail(db, detail.workout.id);
+    const added = fresh?.exercises.find((e) => e.id === exId)?.sets.at(-1);
+    if (added) {
+      if (kind && kind !== 'normal') await setSetKind(db, added.id, kind);
+      if (weight != null)
+        await updateSet(db, added.id, { weight, reps: added.reps, seconds: null, distance: null, done: false });
+    }
+    haptic.tap();
+    await reloadAndGo(() => added?.id);
+  };
+
+  const removeHere = async () => {
+    if (!step) return;
+    const id = step.set.id;
+    await queue.current;
+    await deleteSet(db, id);
+    haptic.warning();
+    const nextOpen = steps.find((s, i) => i > cursor && !s.set.done)?.set.id;
+    await reloadAndGo(() => nextOpen);
+  };
+
   const addOneMore = async () => {
     const ex = (step ?? steps[steps.length - 1])?.ex;
     if (!ex) return;
@@ -216,6 +274,9 @@ function Focus({
           onDraft={(patch) => save(step.set.id, { ...patch, done: false })}
           onComplete={complete}
           onUndo={undoTick}
+          onKind={changeKind}
+          onAddSet={addHere}
+          onRemove={removeHere}
         />
       ) : null}
     </View>
@@ -300,6 +361,9 @@ function SetView({
   onDraft,
   onComplete,
   onUndo,
+  onKind,
+  onAddSet,
+  onRemove,
 }: {
   step: Step;
   number: number;
@@ -311,8 +375,13 @@ function SetView({
   onDraft: (patch: SetPatch) => void;
   onComplete: (patch: SetPatch) => void;
   onUndo: () => void;
+  onKind: (kind: SetKind) => void;
+  /** Adds a set to this exercise; a drop set starts about 20 % lighter. */
+  onAddSet: (kind?: SetKind, weight?: number | null) => void;
+  onRemove: () => void;
 }) {
   const { ex, set, setIndex } = step;
+  const [menu, setMenu] = useState(false);
   const cardio = ex.track !== 'weight_reps';
   const floors = ex.track === 'time_floors';
   const prev: PrevSet | undefined = ex.previous[setIndex];
@@ -374,15 +443,25 @@ function SetView({
               style={[styles.navButton, !canBack && { opacity: 0.25 }]}>
               <Ionicons name="chevron-back" size={16} color={C.text} />
             </Pressable>
-            {kind ? (
-              <View style={[styles.kindChip, { borderColor: kind.color }]}>
+            {/* Tap to change the set type, add a set or drop set, or remove it. */}
+            <Pressable
+              onPress={() => setMenu(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`${kind ? kind.name : `Set ${number} of ${total}`}. Change set type`}
+              style={({ pressed }) => [
+                styles.typeChip,
+                kind && { borderColor: kind.color, backgroundColor: kind.color + '1F' },
+                pressed && { opacity: 0.7 },
+              ]}>
+              {kind ? (
                 <Text style={[styles.kindText, { color: kind.color }]}>{kind.name}</Text>
-              </View>
-            ) : (
-              <Text style={styles.setLabel}>
-                Set {number} <Text style={styles.faint}>of {total}</Text>
-              </Text>
-            )}
+              ) : (
+                <Text style={styles.setLabel}>
+                  Set {number} <Text style={styles.faint}>of {total}</Text>
+                </Text>
+              )}
+              <Ionicons name="chevron-down" size={13} color={kind ? kind.color : C.textDim} />
+            </Pressable>
             <Pressable
               onPress={onForward}
               disabled={!canForward}
@@ -390,6 +469,15 @@ function SetView({
               accessibilityLabel="Next set"
               style={[styles.navButton, !canForward && { opacity: 0.25 }]}>
               <Ionicons name="chevron-forward" size={16} color={C.text} />
+            </Pressable>
+            <View style={{ flex: 1 }} />
+            <Pressable
+              onPress={() => onAddSet()}
+              accessibilityRole="button"
+              accessibilityLabel={`Add a set to ${ex.name}`}
+              style={({ pressed }) => [styles.addChip, pressed && { opacity: 0.7 }]}>
+              <Ionicons name="add" size={15} color={C.accent} />
+              <Text style={styles.addChipText}>Set</Text>
             </Pressable>
           </View>
         </View>
@@ -474,6 +562,29 @@ function SetView({
           onDone={() => onComplete({ ...patchOf(a, b), done: true })}
         />
       )}
+      {menu ? (
+        <SetMenu
+          title={kind ? kind.name : `Set ${number}`}
+          current={set.kind}
+          cardio={cardio}
+          canRemove={ex.sets.length > 1}
+          onClose={() => setMenu(false)}
+          onKind={(k) => {
+            setMenu(false);
+            onKind(k);
+          }}
+          onAdd={(k) => {
+            setMenu(false);
+            // Drop set: about 20 % lighter, rounded to what you can load.
+            const w = k === 'drop' && a ? Math.max(0, Math.round((a * 0.8) / stepA) * stepA) : undefined;
+            onAddSet(k, w);
+          }}
+          onRemove={() => {
+            setMenu(false);
+            onRemove();
+          }}
+        />
+      ) : null}
     </Animated.View>
   );
 }
@@ -610,6 +721,101 @@ function BigNumber({
         </View>
       )}
     </View>
+  );
+}
+
+/** Bottom sheet for one set: its type, add a set or a drop set, or remove it. */
+function SetMenu({
+  title,
+  current,
+  cardio,
+  canRemove,
+  onClose,
+  onKind,
+  onAdd,
+  onRemove,
+}: {
+  title: string;
+  current: SetKind;
+  cardio: boolean;
+  canRemove: boolean;
+  onClose: () => void;
+  onKind: (k: SetKind) => void;
+  onAdd: (k?: SetKind) => void;
+  onRemove: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const types: { kind: SetKind; letter: string; color: string; name: string; hint: string }[] = [
+    { kind: 'normal', letter: '1', color: C.text, name: 'Normal set', hint: 'Counts for stats and records' },
+    { kind: 'warmup', ...KIND.warmup, hint: 'Left out of stats and records' },
+    { kind: 'drop', ...KIND.drop, hint: 'Straight after a set, with less weight' },
+    { kind: 'failure', ...KIND.failure, hint: "Went until you couldn't do another rep" },
+  ];
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Animated.View entering={FadeIn.duration(150)} style={StyleSheet.absoluteFill}>
+          <Pressable style={styles.menuBackdrop} onPress={onClose} accessibilityLabel="Close" />
+        </Animated.View>
+        <Animated.View
+          entering={SlideInDown.springify().damping(20).stiffness(220)}
+          style={[styles.menu, { paddingBottom: Math.max(insets.bottom, S.lg) + 16 }]}>
+          <View style={styles.menuGrip} />
+          <Text style={styles.menuTitle}>{title}</Text>
+          {cardio
+            ? null
+            : types.map((t) => {
+                const on = current === t.kind;
+                return (
+                  <Pressable
+                    key={t.kind}
+                    onPress={() => onKind(t.kind)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t.name}
+                    accessibilityState={{ selected: on }}
+                    style={({ pressed }) => [styles.menuRow, on && styles.menuRowOn, pressed && { opacity: 0.75 }]}>
+                    <View style={[styles.menuBadge, { borderColor: t.color }]}>
+                      <Text style={[styles.menuBadgeText, { color: t.color }]}>{t.letter}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.menuName}>{t.name}</Text>
+                      <Text style={styles.faint}>{t.hint}</Text>
+                    </View>
+                    {on ? <Ionicons name="checkmark-circle" size={22} color={C.accent} /> : null}
+                  </Pressable>
+                );
+              })}
+          <View style={styles.menuDivider} />
+          <View style={styles.menuActions}>
+            <Pressable
+              onPress={() => onAdd()}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.menuAction, pressed && { opacity: 0.75 }]}>
+              <Ionicons name="add-circle-outline" size={22} color={C.accent} />
+              <Text style={styles.menuActionText}>Add a set</Text>
+            </Pressable>
+            {cardio ? null : (
+              <Pressable
+                onPress={() => onAdd('drop')}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.menuAction, pressed && { opacity: 0.75 }]}>
+                <Ionicons name="trending-down" size={22} color={KIND.drop.color} />
+                <Text style={styles.menuActionText}>Add a drop set</Text>
+              </Pressable>
+            )}
+          </View>
+          {canRemove ? (
+            <Pressable
+              onPress={onRemove}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.menuRemove, pressed && { opacity: 0.75 }]}>
+              <Ionicons name="trash-outline" size={18} color={C.danger} />
+              <Text style={[styles.menuName, { color: C.danger }]}>Remove this set</Text>
+            </Pressable>
+          ) : null}
+        </Animated.View>
+      </View>
+    </Modal>
   );
 }
 
@@ -894,7 +1100,77 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: C.cardHi,
   },
-  kindChip: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12, borderWidth: 1 },
+  typeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.borderHi,
+    backgroundColor: C.cardHi,
+  },
+  addChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
+  addChipText: { color: C.accent, fontFamily: F.semi, fontSize: 14 },
+  menuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+  menu: {
+    backgroundColor: C.card,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: S.lg,
+    paddingTop: S.sm,
+    gap: 6,
+  },
+  menuGrip: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.borderHi,
+    marginBottom: 6,
+  },
+  menuTitle: { color: C.text, fontFamily: F.display, fontSize: 20, marginBottom: 4 },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: S.md, padding: 10, borderRadius: R.lg },
+  menuRowOn: { backgroundColor: C.accentDim },
+  menuBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuBadgeText: { fontFamily: F.display, fontSize: 15 },
+  menuName: { color: C.text, fontFamily: F.semi, fontSize: 16 },
+  menuDivider: { height: 1, backgroundColor: C.border, marginVertical: 6 },
+  menuActions: { flexDirection: 'row', gap: S.sm },
+  menuAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 52,
+    borderRadius: R.lg,
+    backgroundColor: C.cardHi,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  menuActionText: { color: C.text, fontFamily: F.semi, fontSize: 15 },
+  menuRemove: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48 },
   kindText: { fontFamily: F.semi, fontSize: 13 },
   note: {
     flexDirection: 'row',
