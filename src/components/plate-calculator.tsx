@@ -96,6 +96,26 @@ export function PlateHint({ kg, onOpen }: { kg: number | null; onOpen: () => voi
   );
 }
 
+/** One quiet line under a barbell weight: the plates for each side, as coloured dots. */
+export function PlateLine({ kg }: { kg: number }) {
+  const { bar, have } = useGymPlates();
+  if (kg <= bar) return <Text style={styles.lineText}>{kg === bar ? 'Empty bar' : ' '}</Text>;
+  const r = platesFor(kg, bar, have);
+  return (
+    <View style={styles.line} accessibilityLabel={`Plates per side: ${describePlates(r.perSide)}`}>
+      {r.perSide.slice(0, 7).map((p, i) => (
+        <View
+          key={i}
+          style={[styles.hintDot, { backgroundColor: PLATE_COLOR[p], height: p >= 15 ? 16 : p >= 5 ? 12 : 9 }]}
+        />
+      ))}
+      <Text style={styles.lineText} numberOfLines={1}>
+        {r.exact ? describePlates(r.perSide) : `≈ ${fmtWeight(r.below)} kg`} per side
+      </Text>
+    </View>
+  );
+}
+
 export function PlateCalculator({
   initial,
   onClose,
@@ -270,6 +290,8 @@ const styles = StyleSheet.create({
     borderColor: C.accentLine,
     backgroundColor: C.accentDim,
   },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  lineText: { color: C.textFaint, fontFamily: F.medium, fontSize: 12, marginLeft: 4 },
   hintDots: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   hintDot: { width: 5, borderRadius: 1.5 },
   hintText: { color: C.text, fontFamily: F.semi, fontSize: 12, flexShrink: 1 },

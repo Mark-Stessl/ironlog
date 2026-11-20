@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useKeepAwake } from 'expo-keep-awake';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { useSQLiteContext } from 'expo-sqlite';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import { Modal, Pressable, ScrollView, type ScrollViewInstance, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
@@ -107,6 +107,7 @@ import { C, F, R, S, useIsDesktop } from '@/lib/theme';
 import { primeKeyboard } from '@/lib/keyboard';
 import { searchExercises } from '@/lib/search';
 import { useFocusData } from '@/lib/use-focus-data';
+import { adjustRest, takeFinishRequest, useRest } from '@/lib/workout-session';
 
 /** How far a set row slides open to show its bin. */
 const BIN_WIDTH = 64;
@@ -174,7 +175,7 @@ function ActiveWorkout({
     await reload();
   };
   const [restSeconds, setRestSeconds] = useState(90);
-  const [rest, setRest] = useState<{ id: number; endAt: number; total: number; label?: string } | null>(null);
+  const [rest, setRest] = useRest();
 
   useEffect(() => {
     getSetting(db, 'rest_seconds', '90').then((v) => setRestSeconds(Number(v)));
@@ -221,6 +222,22 @@ function ActiveWorkout({
     }
   };
 
+  // Focus mode: a full-screen page; it saves straight to the database, so reload when back.
+  const openFocus = async () => {
+    await writes.current;
+    router.push({ pathname: '/focus/[id]', params: { id: String(workout.id) } });
+  };
+  // Focus mode asked to finish ("Finish workout" on its last screen): show the normal dialog.
+  const [onScreen, setOnScreen] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setOnScreen(true);
+      if (takeFinishRequest()) setTimeout(() => finishRef.current(), 350);
+      return () => setOnScreen(false);
+    }, []),
+  );
+  const finishRef = useRef(() => {});
+
   const doneSets = exercises.flatMap((e) => e.sets).filter((s) => s.done);
   const volume = doneSets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
 
@@ -254,6 +271,8 @@ function ActiveWorkout({
     router.setParams({ fresh: '1' }); // show the celebration on the summary
     await sync();
   };
+
+  finishRef.current = finish;
 
   /** Started from a routine and did something different? Ask what to do with the routine. */
   const offerRoutineUpdate = async () => {
@@ -384,6 +403,23 @@ function ActiveWorkout({
             </Pressable>
           </View>
 
+          {exercises.length > 0 && !desktop ? (
+            <Pressable
+              onPress={openFocus}
+              accessibilityRole="button"
+              accessibilityLabel="Start focus mode"
+              style={({ pressed }) => [styles.focusButton, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}>
+              <View style={styles.focusIcon}>
+                <Ionicons name="scan-outline" size={18} color={C.onAccent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[text.strong, { color: C.accent }]}>Focus mode</Text>
+                <Text style={text.faint}>One set at a time, big numbers, swipe to tick</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={C.accent} />
+            </Pressable>
+          ) : null}
+
           {exercises.length === 0 ? (
             <Empty
               icon="barbell-outline"
@@ -484,16 +520,14 @@ function ActiveWorkout({
           <PadSpacer />
         </ScrollView>
 
-        {rest ? (
+        {rest && onScreen ? (
           <RestBar
             key={rest.id}
             label={rest.label}
             endAt={rest.endAt}
             total={rest.total}
             bottomInset={insets.bottom}
-            onAdjust={(deltaMs) =>
-              setRest({ ...rest, endAt: rest.endAt + deltaMs, total: Math.max(rest.total + deltaMs, 1000) })
-            }
+            onAdjust={adjustRest}
             onDone={() => setRest(null)}
           />
         ) : null}
@@ -1628,6 +1662,25 @@ const styles = StyleSheet.create({
   dragBox: { shadowColor: '#000', shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   folded: { height: FOLDED, justifyContent: 'center', paddingVertical: 0 },
   held: { borderColor: C.accent },
+  focusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: S.md,
+    paddingVertical: 12,
+    paddingHorizontal: S.md,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.accentLine,
+    backgroundColor: C.accentDim,
+  },
+  focusIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.accent,
+  },
   undoBar: {
     position: 'absolute',
     left: S.lg,
